@@ -1,0 +1,42 @@
+---
+import type { Category, Lang } from '../content/types';
+import { t } from '../i18n/strings';
+import { otherLang, paths } from '../i18n/routes';
+import Icon from './Icon.astro';
+import Logo from './Logo.astro';
+import SearchForm from './SearchForm.astro';
+
+interface Props {
+  lang: Lang;
+  categories: Category[];
+  currentPath: string;
+  /** Path of the equivalent page in the other language, when one exists. */
+  alternatePath?: string;
+}
+const { lang, categories, currentPath, alternatePath } = Astro.props;
+const switchTo = alternatePath ?? paths.home(otherLang(lang));
+const current = (path: string) =>
+  currentPath === path || (path !== paths.home(lang) && currentPath.startsWith(path)) ? 'page' : undefined;
+---
+<header class="site-header">
+  <div class="container header-bar">
+    <Logo lang={lang} />
+    <SearchForm lang={lang} id="header-q" className="header-search" />
+    <div class="header-actions">
+      <a class="icon-button search-shortcut" href={paths.search(lang)} aria-label={t(lang, 'nav.search')}><Icon name="search" /></a>
+      <a class="lang-switch" href={switchTo} hreflang={otherLang(lang)} lang={otherLang(lang)} aria-label={t(lang, 'lang.switchLabel')}>{t(lang, 'lang.switch')}</a>
+      <a class="ad-button" href={paths.advertise(lang)}><Icon name="megaphone" /><span>{t(lang, 'nav.advertise')}</span></a>
+    </div>
+  </div>
+  <nav class="category-nav" aria-label={t(lang, 'nav.categories')}>
+    <div class="container">
+      <ul class="category-nav__list">
+        <li><a href={paths.home(lang)} aria-current={currentPath === paths.home(lang) ? 'page' : undefined}>{t(lang, 'nav.home')}</a></li>
+        {categories.map((category) => (
+          <li><a href={paths.category(lang, category)} aria-current={current(paths.category(lang, category))}>{category.name[lang]}</a></li>
+        ))}
+        <li><a class="category-nav__ad" href={paths.advertise(lang)} aria-current={current(paths.advertise(lang))}>{t(lang, 'nav.advertise')}</a></li>
+      </ul>
+    </div>
+  </nav>
+</header>

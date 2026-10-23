@@ -1,0 +1,19 @@
+---
+import type { Lang } from '../content/types';
+import { t } from '../i18n/strings';
+
+interface Props {
+  lang: Lang;
+  page: number;
+  totalPages: number;
+  hrefFor: (page: number) => string;
+}
+const { lang, page, totalPages, hrefFor } = Astro.props;
+---
+{totalPages > 1 && (
+  <nav class="pagination" aria-label={t(lang, 'pagination.label')}>
+    {page > 1 && <a href={hrefFor(page - 1)} rel="prev">{t(lang, 'pagination.prev')}</a>}
+    <span>{t(lang, 'pagination.page')} {page} {t(lang, 'pagination.of')} {totalPages}</span>
+    {page < totalPages && <a href={hrefFor(page + 1)} rel="next">{t(lang, 'pagination.next')}</a>}
+  </nav>
+)}

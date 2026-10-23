@@ -1,0 +1,53 @@
+---
+import type { GetStaticPaths } from 'astro';
+import Pagination from '../../../../components/Pagination.astro';
+import StoryCard from '../../../../components/StoryCard.astro';
+import { paginate } from '../../../../content/query';
+import type { Category, Lang } from '../../../../content/types';
+import { t } from '../../../../i18n/strings';
+import { languages, otherLang, paths } from '../../../../i18n/routes';
+import BaseLayout from '../../../../layouts/BaseLayout.astro';
+import { CATEGORY_PAGE_SIZE, publicSiteData } from '../../../../lib/site-data';
+
+
+export const getStaticPaths = (() =>
+  languages.flatMap((lang) => {
+    const { categories, inCategory } = publicSiteData(lang);
+    return categories.flatMap((category) => {
+      const { totalPages } = paginate(inCategory(category.id), 1, CATEGORY_PAGE_SIZE);
+      return Array.from({ length: totalPages }, (_, i) => ({
+        params: { lang, slug: category.slug, page: i === 0 ? undefined : `page/${i + 1}` },
+        props: { category, page: i + 1 },
+      }));
+    });
+  })) satisfies GetStaticPaths;
+
+const lang = Astro.params.lang as Lang;
+const { category, page } = Astro.props as { category: Category; page: number };
+const { inCategory } = publicSiteData(lang);
+const result = paginate(inCategory(category.id), page, CATEGORY_PAGE_SIZE);
+const title = category.name[lang];
+---
+<BaseLayout
+  lang={lang}
+  title={page > 1 ? `${title} — ${t(lang, 'pagination.page')} ${page}` : title}
+  description={category.description[lang]}
+  path={paths.category(lang, category, page)}
+  alternatePath={page === 1 ? paths.category(otherLang(lang), category) : undefined}
+>
+  <h1 class="page-title">{title}</h1>
+  <p class="page-intro">{category.description[lang]}</p>
+  {result.items.length === 0 ? (
+    <p class="empty">{t(lang, 'category.empty')}</p>
+  ) : (
+    <div class="section">
+      <StoryCard article={result.items[0]!} variant="lead" headingLevel={2} eager={page === 1} />
+      {result.items.length > 1 && (
+        <div class="panel list-grid section">
+          {result.items.slice(1).map((article) => <StoryCard article={article} variant="row" headingLevel={2} />)}
+        </div>
+      )}
+    </div>
+  )}
+  <Pagination lang={lang} page={result.page} totalPages={result.totalPages} hrefFor={(p) => paths.category(lang, category, p)} />
+</BaseLayout>

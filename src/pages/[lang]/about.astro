@@ -1,0 +1,34 @@
+---
+import Icon from '../../components/Icon.astro';
+import { siteSettings } from '../../config/site';
+import type { Lang } from '../../content/types';
+import { t } from '../../i18n/strings';
+import { languages, otherLang, paths } from '../../i18n/routes';
+import BaseLayout from '../../layouts/BaseLayout.astro';
+
+export function getStaticPaths() {
+  return languages.map((lang) => ({ params: { lang } }));
+}
+
+const lang = Astro.params.lang as Lang;
+const { contact, leadership } = siteSettings;
+---
+<BaseLayout lang={lang} title={t(lang, 'about.title')} description={t(lang, 'about.body')} path={paths.about(lang)} alternatePath={paths.about(otherLang(lang))}>
+  <h1 class="page-title">{t(lang, 'about.title')}</h1>
+  <div class="section panel panel--padded prose">
+    <p>{t(lang, 'about.body')}</p>
+    <h2>{t(lang, 'footer.leadership')}</h2>
+    <dl class="leadership">
+      {leadership.map((person) => (
+        <div><dt>{person.role[lang]}</dt><dd>{person.name[lang]}</dd></div>
+      ))}
+    </dl>
+    <h2>{t(lang, 'footer.contact')}</h2>
+    <div class="contact-card__actions">
+      <a class="button button--whatsapp" href={contact.whatsappHref} target="_blank" rel="noopener noreferrer"><Icon name="whatsapp" />{t(lang, 'ad.whatsapp')}</a>
+      <a class="button button--call" href={contact.telHref}><Icon name="phone" /><span dir="ltr">{contact.phone}</span></a>
+      <a class="button button--email" href={contact.emailHref}><Icon name="mail" />{t(lang, 'ad.email')}</a>
+    </div>
+    <p><a class="kicker" href={paths.advertise(lang)}>{t(lang, 'nav.advertise')}</a></p>
+  </div>
+</BaseLayout>

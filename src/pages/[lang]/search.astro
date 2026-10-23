@@ -1,0 +1,88 @@
+---
+import SearchForm from '../../components/SearchForm.astro';
+import type { Lang } from '../../content/types';
+import { t } from '../../i18n/strings';
+import { languages, otherLang, paths } from '../../i18n/routes';
+import BaseLayout from '../../layouts/BaseLayout.astro';
+import { buildSearchIndex } from '../../lib/search';
+import { publicSiteData } from '../../lib/site-data';
+
+export function getStaticPaths() {
+  return languages.map((lang) => ({ params: { lang } }));
+}
+
+const lang = Astro.params.lang as Lang;
+const { published, categories } = publicSiteData(lang);
+// Only published articles are indexed. The database-backed search endpoint replaces this static index.
+const index = buildSearchIndex(published, categories, lang, (a) => paths.article(a));
+---
+<BaseLayout lang={lang} title={t(lang, 'search.title')} description={t(lang, 'search.prompt')} path={paths.search(lang)} alternatePath={paths.search(otherLang(lang))} noindex>
+  <h1 class="page-title">{t(lang, 'search.title')}</h1>
+  <div class="section"><SearchForm lang={lang} id="search-page-q" /></div>
+  <section
+    class="results"
+    aria-live="polite"
+    data-search-results
+    data-label-results-for={t(lang, 'search.resultsFor')}
+    data-label-empty={t(lang, 'search.empty')}
+    data-label-count={t(lang, 'search.count')}
+    data-locale={lang === 'ar' ? 'ar-EG' : 'en-GB'}
+  >
+    <p class="page-intro">{t(lang, 'search.prompt')}</p>
+  </section>
+  <script type="application/json" id="search-index" set:html={JSON.stringify(index).replace(/</g, '\\u003c')} />
+</BaseLayout>
+
+<script>
+  import { searchIndex, type SearchEntry } from '../../lib/search';
+
+  const container = document.querySelector<HTMLElement>('[data-search-results]');
+  const raw = document.getElementById('search-index')?.textContent ?? '[]';
+  const query = new URLSearchParams(window.location.search).get('q')?.slice(0, 100) ?? '';
+
+  for (const input of document.querySelectorAll<HTMLInputElement>('input[name="q"]')) {
+    input.value = query;
+  }
+
+  if (container && query.trim() !== '') {
+    const entries = JSON.parse(raw) as SearchEntry[];
+    const results = searchIndex(entries, query);
+    const { labelResultsFor, labelEmpty, labelCount, locale } = container.dataset;
+    container.replaceChildren();
+
+    const heading = document.createElement('h2');
+    heading.className = 'results__count';
+    heading.textContent = results.length > 0 ? `${labelResultsFor} «${query}»: ${results.length} ${labelCount}` : (labelEmpty ?? '');
+    container.append(heading);
+
+    if (results.length > 0) {
+      const panel = document.createElement('div');
+      panel.className = 'panel';
+      const dateFormat = new Intl.DateTimeFormat(locale, { timeZone: 'Africa/Cairo', day: 'numeric', month: 'short' });
+      for (const entry of results) {
+        const article = document.createElement('article');
+        article.className = 'story-row story-row--text';
+        const body = document.createElement('div');
+        body.className = 'story-row__body';
+        const kicker = document.createElement('span');
+        kicker.className = 'kicker';
+        kicker.textContent = entry.category;
+        const title = document.createElement('h3');
+        const link = document.createElement('a');
+        link.href = entry.href;
+        link.textContent = entry.title;
+        title.append(link);
+        const summary = document.createElement('p');
+        summary.textContent = entry.summary;
+        const time = document.createElement('time');
+        time.className = 'meta';
+        time.dateTime = entry.publishAt;
+        time.textContent = dateFormat.format(new Date(entry.publishAt));
+        body.append(kicker, title, summary, time);
+        article.append(body);
+        panel.append(article);
+      }
+      container.append(panel);
+    }
+  }
+</script>

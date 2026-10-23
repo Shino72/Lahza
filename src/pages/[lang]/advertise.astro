@@ -1,0 +1,78 @@
+---
+import Icon from '../../components/Icon.astro';
+import { siteSettings } from '../../config/site';
+import type { Lang } from '../../content/types';
+import { t } from '../../i18n/strings';
+import { languages, otherLang, paths } from '../../i18n/routes';
+import BaseLayout from '../../layouts/BaseLayout.astro';
+import { advertisementTypes } from '../../lib/inquiry';
+
+export function getStaticPaths() {
+  return languages.map((lang) => ({ params: { lang } }));
+}
+
+const lang = Astro.params.lang as Lang;
+const { contact } = siteSettings;
+// The form posts to the inquiry endpoint once secure storage is connected.
+const inquiriesEnabled = false;
+---
+<BaseLayout lang={lang} title={t(lang, 'ad.title')} description={t(lang, 'ad.intro')} path={paths.advertise(lang)} alternatePath={paths.advertise(otherLang(lang))}>
+  <h1 class="page-title">{t(lang, 'ad.title')}</h1>
+  <p class="page-intro">{t(lang, 'ad.intro')}</p>
+
+  <div class="advertise-layout section">
+    <section class="panel panel--padded contact-card" aria-labelledby="ad-contact">
+      <h2 id="ad-contact">{t(lang, 'ad.contactTitle')}</h2>
+      <p class="meta">{contact.phoneLabel}</p>
+      <p class="contact-card__number">{contact.phone}</p>
+      <div class="contact-card__actions">
+        <a class="button button--whatsapp" href={contact.whatsappHref} target="_blank" rel="noopener noreferrer"><Icon name="whatsapp" />{t(lang, 'ad.whatsapp')}</a>
+        <a class="button button--call" href={contact.telHref}><Icon name="phone" />{t(lang, 'ad.call')}</a>
+        <a class="button button--email" href={contact.emailHref}><Icon name="mail" />{t(lang, 'ad.email')}</a>
+      </div>
+      <p class="meta"><span dir="ltr">{contact.email}</span></p>
+    </section>
+
+    <section class="panel panel--padded" aria-labelledby="ad-form">
+      <h2 id="ad-form">{t(lang, 'ad.formTitle')}</h2>
+      {!inquiriesEnabled && <p class="notice section" role="status">{t(lang, 'ad.formPending')}</p>}
+      <form class="form section" method="post" action="/api/inquiries" novalidate>
+        <fieldset disabled={!inquiriesEnabled} class="form">
+          <div class="field">
+            <label for="company">{t(lang, 'ad.company')}</label>
+            <input id="company" name="company" required maxlength="120" autocomplete="organization" />
+          </div>
+          <div class="field">
+            <label for="contactPerson">{t(lang, 'ad.person')}</label>
+            <input id="contactPerson" name="contactPerson" required maxlength="120" autocomplete="name" />
+          </div>
+          <div class="field">
+            <label for="email">{t(lang, 'ad.emailField')}</label>
+            <input id="email" name="email" type="email" required maxlength="254" autocomplete="email" dir="ltr" />
+          </div>
+          <div class="field">
+            <label for="phone">{t(lang, 'ad.phone')}</label>
+            <input id="phone" name="phone" type="tel" required maxlength="20" autocomplete="tel" dir="ltr" />
+          </div>
+          <div class="field">
+            <label for="adType">{t(lang, 'ad.type')}</label>
+            <select id="adType" name="adType" required>
+              {advertisementTypes.map((type) => <option value={type}>{t(lang, `ad.type.${type}`)}</option>)}
+            </select>
+          </div>
+          <div class="field">
+            <label for="details">{t(lang, 'ad.details')}</label>
+            <textarea id="details" name="details" maxlength="2000"></textarea>
+          </div>
+          <div class="honeypot" aria-hidden="true">
+            <label for="website">Website</label>
+            <input id="website" name="website" tabindex="-1" autocomplete="off" />
+          </div>
+          <input type="hidden" name="lang" value={lang} />
+          <p class="meta"><a href={paths.privacy(lang)}>{t(lang, 'ad.privacy')}</a></p>
+          <button class="button button--call" type="submit">{t(lang, 'ad.submit')}</button>
+        </fieldset>
+      </form>
+    </section>
+  </div>
+</BaseLayout>

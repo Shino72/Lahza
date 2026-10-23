@@ -1,0 +1,41 @@
+---
+import type { ArticleImage, Lang } from '../content/types';
+import { t } from '../i18n/strings';
+
+interface Props {
+  image: ArticleImage;
+  categoryId: string;
+  lang: Lang;
+  /** Decorative when the headline next to it already describes the story. */
+  decorative?: boolean;
+  eager?: boolean;
+  showLabel?: boolean;
+}
+const { image, categoryId, lang, decorative = false, eager = false, showLabel = false } = Astro.props;
+// Stable variation per category so placeholder covers are not identical.
+const seed = [...categoryId].reduce((sum, ch) => sum + ch.charCodeAt(0), 0);
+const cx = 260 + (seed % 5) * 40;
+---
+<div class:list={['cover', `cover--${categoryId}`]}>
+  {image.src ? (
+    <img
+      src={image.src}
+      alt={decorative ? '' : image.alt}
+      width={image.width ?? 1200}
+      height={image.height ?? 675}
+      loading={eager ? 'eager' : 'lazy'}
+      decoding="async"
+      fetchpriority={eager ? 'high' : undefined}
+    />
+  ) : (
+    <>
+      <svg viewBox="0 0 640 360" preserveAspectRatio="xMidYMid slice" role={decorative ? undefined : 'img'} aria-hidden={decorative ? 'true' : undefined} aria-label={decorative ? undefined : `${t(lang, 'article.placeholderImage')}: ${image.alt}`}>
+        <rect class="cover__bg" width="640" height="360" />
+        <path class="cover__shape" d={`M0 ${250 - (seed % 40)} C 160 ${200 + (seed % 60)}, 420 ${330 - (seed % 50)}, 640 ${230 + (seed % 30)} V360 H0 Z`} />
+        <circle class="cover__ring" cx={cx} cy="150" r="78" />
+        <path class="cover__hand" d={`M${cx} 150 V105 M${cx} 150 L${cx + 32} 170`} />
+      </svg>
+      {showLabel && <span class="cover__label">{t(lang, 'article.placeholderImage')}</span>}
+    </>
+  )}
+</div>

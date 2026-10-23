@@ -1,0 +1,58 @@
+---
+import type { Article, Category, Lang } from '../content/types';
+import { t } from '../i18n/strings';
+import { paths } from '../i18n/routes';
+import { formatDate } from '../lib/format';
+import Cover from './Cover.astro';
+
+interface Props {
+  article: Article;
+  category?: Category;
+  variant: 'lead' | 'row' | 'tile';
+  headingLevel?: 2 | 3;
+  eager?: boolean;
+}
+const { article, category, variant, headingLevel = 3, eager = false } = Astro.props;
+const lang: Lang = article.lang;
+const Heading = headingLevel === 2 ? 'h2' : 'h3';
+const href = paths.article(article);
+---
+{variant === 'lead' && (
+  <article class="story-lead">
+    <a href={href}>
+      <Cover image={article.image} categoryId={article.categoryId} lang={lang} decorative eager={eager} showLabel />
+    </a>
+    <div class="story-lead__body">
+      <div class="badge-row">
+        {category && <span class="kicker">{category.name[lang]}</span>}
+        {article.isSample && <span class="sample-badge">{t(lang, 'sample.badge')}</span>}
+      </div>
+      <Heading><a href={href}>{article.title}</a></Heading>
+      <p>{article.summary}</p>
+      <time class="meta" datetime={article.publishAt}>{formatDate(article.publishAt, lang)}</time>
+    </div>
+  </article>
+)}
+{variant === 'row' && (
+  <article class="story-row">
+    <a href={href} tabindex="-1" aria-hidden="true">
+      <Cover image={article.image} categoryId={article.categoryId} lang={lang} decorative eager={eager} />
+    </a>
+    <div class="story-row__body">
+      <div class="badge-row">
+        {category && <span class="kicker">{category.name[lang]}</span>}
+      </div>
+      <Heading><a href={href}>{article.title}</a></Heading>
+      <time class="meta" datetime={article.publishAt}>{formatDate(article.publishAt, lang)}</time>
+    </div>
+  </article>
+)}
+{variant === 'tile' && (
+  <article class="story-tile">
+    <a href={href} tabindex="-1" aria-hidden="true">
+      <Cover image={article.image} categoryId={article.categoryId} lang={lang} decorative eager={eager} />
+    </a>
+    <Heading><a href={href}>{article.title}</a></Heading>
+    <time class="meta" datetime={article.publishAt}>{formatDate(article.publishAt, lang)}</time>
+  </article>
+)}

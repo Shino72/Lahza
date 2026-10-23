@@ -1,0 +1,86 @@
+---
+import '@fontsource/cairo/arabic-400.css';
+import '@fontsource/cairo/arabic-600.css';
+import '@fontsource/cairo/arabic-700.css';
+import '@fontsource/cairo/arabic-800.css';
+import '@fontsource/cairo/latin-400.css';
+import '@fontsource/cairo/latin-600.css';
+import '@fontsource/cairo/latin-700.css';
+import '@fontsource/cairo/latin-800.css';
+import '../styles/global.css';
+
+import Footer from '../components/Footer.astro';
+import Header from '../components/Header.astro';
+import { siteSettings } from '../config/site';
+import { visibleCategories } from '../content/query';
+import { loadContent } from '../content/source';
+import type { Lang } from '../content/types';
+import { t } from '../i18n/strings';
+import { dir, otherLang } from '../i18n/routes';
+import { absoluteUrl, jsonLdString } from '../lib/seo';
+
+interface Props {
+  lang: Lang;
+  title: string;
+  description: string;
+  /** Site-relative path of this page, used for the canonical URL. */
+  path: string;
+  /** Path of the same page in the other language, when it exists. */
+  alternatePath?: string;
+  ogType?: 'website' | 'article';
+  jsonLd?: unknown;
+  noindex?: boolean;
+}
+
+const { lang, title, description, path, alternatePath, ogType = 'website', jsonLd, noindex = false } = Astro.props;
+const content = loadContent();
+const categories = visibleCategories(content.categories);
+const isDemo = content.kind === 'demo';
+const site = Astro.site;
+const canonical = absoluteUrl(site, path);
+const siteName = siteSettings.name[lang];
+const fullTitle = title === siteName ? `${siteName} | ${siteSettings.tagline[lang]}` : `${title} | ${siteName}`;
+const ogImageUrl = absoluteUrl(site, '/og-default.png');
+// Preview fixtures must never be indexed.
+const robots = isDemo || noindex ? 'noindex, nofollow' : 'index, follow, max-image-preview:large';
+---
+<!doctype html>
+<html lang={lang} dir={dir(lang)}>
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>{fullTitle}</title>
+    <meta name="description" content={description} />
+    <meta name="robots" content={robots} />
+    <link rel="canonical" href={canonical} />
+    {alternatePath && (
+      <>
+        <link rel="alternate" hreflang={lang} href={canonical} />
+        <link rel="alternate" hreflang={otherLang(lang)} href={absoluteUrl(site, alternatePath)} />
+        <link rel="alternate" hreflang="x-default" href={absoluteUrl(site, lang === 'ar' ? path : alternatePath)} />
+      </>
+    )}
+    <meta property="og:site_name" content={siteName} />
+    <meta property="og:type" content={ogType} />
+    <meta property="og:title" content={title} />
+    <meta property="og:description" content={description} />
+    <meta property="og:url" content={canonical} />
+    <meta property="og:locale" content={lang === 'ar' ? 'ar_EG' : 'en_GB'} />
+    <meta property="og:image" content={ogImageUrl} />
+    <meta property="og:image:width" content="1200" />
+    <meta property="og:image:height" content="630" />
+    <meta name="twitter:card" content="summary_large_image" />
+    <meta name="theme-color" content="#0f2a4a" />
+    <link rel="icon" href="/favicon.svg" type="image/svg+xml" />
+    {jsonLd !== undefined && <script type="application/ld+json" set:html={jsonLdString(jsonLd)} />}
+  </head>
+  <body>
+    <a class="skip-link" href="#main">{t(lang, 'site.skip')}</a>
+    {isDemo && <div class="preview-banner" role="note">{t(lang, 'sample.banner')}</div>}
+    <Header lang={lang} categories={categories} currentPath={path} alternatePath={alternatePath} />
+    <main id="main" class="container">
+      <slot />
+    </main>
+    <Footer lang={lang} categories={categories} />
+  </body>
+</html>

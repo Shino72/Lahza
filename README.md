@@ -1,63 +1,58 @@
-# نبض الشباب | NABD EL SHABAB
+# Lahza | لحظة
 
-موقع مجلة صحفية رقمية لمشروع جامعي. مبني بـ HTML و CSS و JavaScript من غير مكتبات أو خطوات تركيب، وبيشتغل مباشرة من المتصفح.
+Arabic-first, bilingual (Arabic/English) news website built with [Astro](https://astro.build) and TypeScript.
 
-## محتويات المشروع
+## Status
 
-| الملف | وظيفته |
+| Area | State |
 |---|---|
-| `index.html` | الصفحة الرئيسية للموقع (نسخة تشتغل من ملفات منفصلة) |
-| `css/style.css` | التنسيق: الألوان، الشبكة، الموبايل والكمبيوتر |
-| `js/data.js` | **الأقسام والمواضيع.** هنا بتغيّر المحتوى وإيميل التواصل وروابط السوشيال |
-| `js/utils.js` | منطق البحث والترتيب والتحقق من الفورم والمشاركة |
-| `js/render.js` | دوال عرض الصفحات (الرئيسية، الأقسام، الموضوع، البحث، من نحن، اتصل بنا) |
-| `js/app.js` | التوجيه بين الصفحات والأحداث (الضغط، البحث، الترتيب، الفورم) |
-| `tests/logic.test.js` | اختبارات المنطق (Node) |
-| `tests/browser_check.py` | اختبارات بتفتح الموقع في متصفح حقيقي (Playwright، اختياري) |
-| `build.js` | بيجمّع المشروع في ملف واحد `dist/index.html` عشان ينشر كرابط واحد |
+| Public site: homepage, 10 categories, article pages, search, advertising page, about, privacy | Working, static build |
+| Arabic RTL / English LTR, language switch, `/ar/` and `/en/` URLs, linked translations | Working |
+| Canonical, `hreflang`, Open Graph, NewsArticle JSON-LD, `sitemap.xml`, `robots.txt` | Working |
+| Security headers and CSP (`vercel.json`) | Configured; verify on the deployed preview |
+| Content | Sample fixtures only (`LAHZA_CONTENT_SOURCE=demo`); the site is `noindex` while they are in use |
+| Database, staff login, roles, CMS, media uploads, inquiry storage | Not implemented yet (backend phase) |
+| Advertising inquiry form | Rendered disabled until inquiries can be stored securely |
 
-## طريقة التشغيل
+## Requirements
 
-**الطريقة الأسهل:** افتح ملف `index.html` بالدبل كليك. الموقع هيشتغل من غير إنترنت، ما عدا الخط العربي اللي بيتحمل من Google Fonts.
+- Node.js 22.12 or later
+- npm 10 or later
 
-**لو عايز تشغّله من سيرفر محلي:**
-```bash
-npx serve .
-```
-وبعدين افتح الرابط اللي هيطلع لك.
+## Commands
 
-## تعديل المحتوى
-
-كل المحتوى في `js/data.js`:
-- `SITE.contactEmail`: غيّر `your-email@example.com` لإيميلك الحقيقي. لحد ما تغيّره، فورم "اتصل بنا" مش هيبعت.
-- `SITE.socials`: ضيف روابط حساباتك (فيسبوك، إنستجرام...) لو عندك. الروابط الفاضية بتتخفي تلقائيًا.
-- `ARTICLES`: المواضيع. لكل موضوع: العنوان، الملخص، المتن (فقرات `p` وعناوين فرعية `h`)، القسم، التاريخ، الكاتب، والمصادر.
-- `sample: true`: كل المواضيع الحالية تجريبية، والموقع بيعرض عليها علامة "محتوى تجريبي". لما تضيف محتوى حقيقي، غيّرها لـ `false` واكتب المصادر في `sources`.
-- `image`: لو عندك صورة حقيقية لموضوع، حط رابطها هنا (أو مسار الصورة داخل المشروع، زي `img/photo.jpg`). لو مفيش صورة، الموقع بيعرض صورة تمثيلية.
-
-## الاختبارات
-
-```bash
-node tests/logic.test.js
+```sh
+npm ci                # install exact locked dependencies
+npm run dev           # local dev server on http://localhost:4321
+npm run check         # Astro + TypeScript diagnostics
+npm test              # unit tests (Vitest)
+npm run build         # static build into dist/
+npm run test:e2e      # browser tests against the built site (Playwright)
 ```
 
-ولاختبار الموقع في متصفح حقيقي (محتاج Playwright):
-```bash
-python3 tests/browser_check.py .
+`npm run test:e2e` serves `dist/`, so run `npm run build` first. To use an already-installed Chromium instead of `npx playwright install chromium`, set `PLAYWRIGHT_CHROMIUM_EXECUTABLE` to its path.
+
+## Configuration
+
+Copy `.env.example` to `.env` for local overrides. Never commit `.env` files.
+
+| Variable | Purpose |
+|---|---|
+| `PUBLIC_SITE_URL` | Canonical origin for canonical links, `hreflang` and the sitemap |
+| `LAHZA_CONTENT_SOURCE` | `demo` serves labelled sample fixtures; any other value serves an empty site until the database source exists |
+
+## Project layout
+
+```
+src/config/site.ts        contact details, leadership, display time zone
+src/content/              content types, categories, visibility rules, sample fixtures
+src/i18n/                 UI strings (ar/en) and URL helpers
+src/lib/                  search normalisation, SEO, sharing, inquiry validation
+src/components/, layouts/ UI
+src/pages/[lang]/         public routes
+tests/unit, tests/e2e     Vitest and Playwright suites
 ```
 
-## النشر على الإنترنت (عشان تبعت رابط للدكتور)
+Content visibility is defined once in `src/content/query.ts`: an article is public only when `status = 'published'` and `publishAt <= now`. The database policies added in the backend phase must keep the same rule.
 
-1. شغّل `node build.js` عشان تعمل `dist/index.html`.
-2. ارفع المشروع على **GitHub Pages**:
-   - اعمل حساب على GitHub، واعمل Repository جديد.
-   - ارفع فيه ملفات المشروع (أو `dist/index.html` بعد ما تغيّر اسمه لـ `index.html` في مجلد لوحده).
-   - من Settings ← Pages، اختار الفرع الرئيسي، وهيطلع لك رابط زي `https://اسمك.github.io/اسم-المشروع/`.
-3. أو استخدم **Netlify Drop**: افتح موقع Netlify Drop واسحب مجلد المشروع عليه، وهيديك رابط فورًا.
-
-## حدود النسخة دي (لازم تعرفها قبل التسليم)
-
-- **مفيش قاعدة بيانات:** المواضيع الجديدة بتتضاف من `data.js` بس، ومفيش لوحة تحكم تضيف مواضيع من المتصفح.
-- **فورم التواصل:** بيفتح برنامج البريد عند الزائر برسالته جاهزة، ومش بيبعت بشكل مباشر. لو عايز إرسال مباشر، محتاج خدمة خارجية زي Formspree.
-- **الصور:** المواضيع الحالية صورها تمثيلية (تصميمات SVG)، مش صور حقيقية.
-- **المحتوى:** كل المواضيع تجريبية للعرض، وأسماء الشخصيات فيها مش حقيقية.
+See [docs/DEPLOYMENT.md](docs/DEPLOYMENT.md) for deployment and rollback.
