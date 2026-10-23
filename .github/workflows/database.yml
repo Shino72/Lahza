@@ -35,7 +35,7 @@ jobs:
           SUPABASE_SECRET_KEY: ${{ secrets.SUPABASE_SECRET_KEY }}
           BACKUP_PASSPHRASE: ${{ secrets.BACKUP_PASSPHRASE }}
         run: scripts/backup.sh
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v7
         if: ${{ vars.BACKUPS_ENABLED == 'true' }}
         with:
           name: lahza-pre-migration-${{ github.run_id }}
