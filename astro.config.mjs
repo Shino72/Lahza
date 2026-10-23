@@ -2,7 +2,7 @@ import node from '@astrojs/node';
 import vercel from '@astrojs/vercel';
 import { defineConfig, envField } from 'astro/config';
 
-const site = process.env.PUBLIC_SITE_URL ?? 'https://lahza-tau.vercel.app';
+const site = process.env.PUBLIC_SITE_URL ?? 'https://lahza-six.vercel.app';
 
 // Vercel in deployment; the Node adapter runs the same server build for local end-to-end tests.
 const adapter = process.env.LAHZA_ADAPTER === 'node' ? node({ mode: 'standalone' }) : vercel();

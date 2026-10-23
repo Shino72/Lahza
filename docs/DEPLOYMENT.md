@@ -27,7 +27,7 @@ Everything below is done in provider dashboards, and works from a phone browser.
    - Minimum password length **12**, require lowercase, uppercase and digits.
 4. **Authentication → Multi-Factor**: TOTP (App Authenticator) **enabled**.
 5. **Authentication → URL Configuration**
-   - Site URL: the public site origin, e.g. `https://lahza-tau.vercel.app` (later the custom domain).
+   - Site URL: the public site origin, e.g. `https://lahza-six.vercel.app` (later the custom domain).
    - Redirect URLs: `https://<site>/admin/auth/confirm/` and `https://<site>/admin/auth/callback/`.
 6. **Authentication → Emails → Templates**: replace the *Invite user* and *Reset password* templates with the contents of `supabase/templates/invite.html` and `supabase/templates/recovery.html`. The links in those templates are required for sign-in to work.
 7. **Authentication → Emails → SMTP Settings**: configure a real SMTP provider. Supabase's built-in sender is rate-limited and intended for testing only; invitations and password resets will not be reliable without it.
@@ -42,7 +42,7 @@ Project → **Settings → Environment Variables** (Production and Preview):
 | `SUPABASE_URL` | Supabase → Project Settings → API → Project URL |
 | `SUPABASE_PUBLISHABLE_KEY` | Publishable key (or legacy `anon` key) |
 | `SUPABASE_SECRET_KEY` | Secret key (or legacy `service_role` key) — mark *Sensitive* |
-| `PUBLIC_SITE_URL` | The canonical origin, e.g. `https://lahza-tau.vercel.app` |
+| `PUBLIC_SITE_URL` | The canonical origin, e.g. `https://lahza-six.vercel.app` |
 | `OWNER_SETUP_TOKEN` | 32+ random characters (only until the Owner exists) — *Sensitive* |
 | `TURNSTILE_SITE_KEY`, `TURNSTILE_SECRET_KEY` | Optional, from Cloudflare Turnstile |
 | `GOOGLE_LOGIN_ENABLED` | `true` only after step 4 |
