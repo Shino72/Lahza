@@ -14,7 +14,7 @@ jobs:
     # Runs only after the repository secrets below are configured.
     if: ${{ vars.BACKUPS_ENABLED == 'true' }}
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
       - name: Install PostgreSQL 17 client
         run: |
           sudo install -d /usr/share/postgresql-common/pgdg
