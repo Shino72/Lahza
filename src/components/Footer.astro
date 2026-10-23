@@ -1,0 +1,61 @@
+---
+import { contactLinks, siteName } from '../config/site';
+import type { Category, Lang, SiteSettings } from '../content/types';
+import { t } from '../i18n/strings';
+import { paths } from '../i18n/routes';
+import Icon from './Icon.astro';
+import Logo from './Logo.astro';
+
+interface Props {
+  lang: Lang;
+  categories: Category[];
+  settings: SiteSettings;
+}
+const { lang, categories, settings } = Astro.props;
+const { contact, leadership } = settings;
+const links = contactLinks(contact);
+const year = new Date().getFullYear();
+---
+<footer class="site-footer">
+  <div class="container footer-grid">
+    <div class="footer-col">
+      <Logo lang={lang} />
+      <p class="footer-tagline">{settings.tagline[lang]}</p>
+      <h2 class="footer-leadership-title">{t(lang, 'footer.leadership')}</h2>
+      <dl class="leadership footer-leadership">
+        {leadership.map((person) => (
+          <div><dt>{person.role[lang]}</dt><dd>{person.name[lang]}</dd></div>
+        ))}
+      </dl>
+    </div>
+    <div class="footer-col">
+      <h2>{t(lang, 'footer.sections')}</h2>
+      <ul class="footer-sections">
+        {categories.map((category) => <li><a href={paths.category(lang, category)}>{category.name[lang]}</a></li>)}
+      </ul>
+    </div>
+    <div class="footer-col">
+      <h2>{t(lang, 'footer.links')}</h2>
+      <ul>
+        <li><a href={paths.advertise(lang)}>{t(lang, 'nav.advertise')}</a></li>
+        <li><a href={paths.about(lang)}>{t(lang, 'nav.about')}</a></li>
+        <li><a href={paths.privacy(lang)}>{t(lang, 'nav.privacy')}</a></li>
+        <li><a href={paths.search(lang)}>{t(lang, 'nav.search')}</a></li>
+      </ul>
+    </div>
+    <div class="footer-col footer-contact">
+      <h2>{t(lang, 'footer.contact')}</h2>
+      <ul>
+        <li>{contact.phoneLabel}</li>
+        <li><a href={links.whatsapp} rel="noopener noreferrer" target="_blank"><Icon name="whatsapp" /><span class="ltr">{contact.phone}</span></a></li>
+        <li><a href={links.tel}><Icon name="phone" /><span class="ltr">{contact.phone}</span></a></li>
+        <li><a href={links.email}><Icon name="mail" /><span class="ltr">{contact.email}</span></a></li>
+      </ul>
+    </div>
+  </div>
+  <div class="footer-bottom">
+    <div class="container">
+      <span>© {year} {siteName[lang]}. {t(lang, 'footer.rights')}</span>
+    </div>
+  </div>
+</footer>

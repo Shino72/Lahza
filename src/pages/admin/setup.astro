@@ -1,0 +1,92 @@
+---
+import { timingSafeEqual, createHash } from 'node:crypto';
+import { at } from '../../admin/strings';
+import AuthLayout from '../../layouts/AuthLayout.astro';
+import { adminLang, field } from '../../lib/server/admin';
+import { logAuthEvent } from '../../lib/server/auth-log';
+import { serverEnv } from '../../lib/server/env';
+import { allow, clientKey } from '../../lib/server/rate-limit';
+import { deleteAuthUser, deliverInvitation } from '../../lib/server/staff';
+import { getServiceClient } from '../../lib/server/supabase';
+
+const lang = adminLang(Astro.cookies);
+const admin = getServiceClient();
+const configured = Boolean(serverEnv.ownerSetupToken && serverEnv.ownerSetupToken.length >= 24);
+
+const { data: owner } = await admin.from('staff_profiles').select('user_id, status').eq('role', 'owner').maybeSingle();
+const completed = owner?.status === 'active' || owner?.status === 'suspended';
+
+let message: string | null = null;
+let sent = false;
+
+const sameToken = (given: string) => {
+  const a = createHash('sha256').update(given).digest();
+  const b = createHash('sha256').update(serverEnv.ownerSetupToken ?? '').digest();
+  return timingSafeEqual(a, b);
+};
+
+if (Astro.request.method === 'POST' && configured && !completed) {
+  const form = await Astro.request.formData();
+  const token = String(form.get('token') ?? '').slice(0, 200);
+  const email = field(form, 'email', 254).toLowerCase();
+  const name = field(form, 'name', 120);
+  if (!(await allow('owner-setup', clientKey(Astro.clientAddress), 5, 3600))) {
+    message = at(lang, 'login.limited');
+    Astro.response.status = 429;
+  } else if (!sameToken(token)) {
+    await logAuthEvent(null, 'auth.owner_setup_rejected', {});
+    message = at(lang, 'setup.badToken');
+    Astro.response.status = 403;
+  } else if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email) || !name) {
+    message = at(lang, 'flash.invalid');
+    Astro.response.status = 400;
+  } else {
+    // A pending (never accepted) Owner invitation is replaced by the new one.
+    if (owner?.status === 'invited') {
+      await admin.from('staff_permissions').delete().eq('user_id', owner.user_id);
+      await admin.from('staff_profiles').delete().eq('user_id', owner.user_id);
+      await admin.from('staff_invitations').update({ revoked_at: new Date().toISOString() }).eq('role', 'owner').is('accepted_at', null);
+      await deleteAuthUser(owner.user_id);
+    }
+    const { data: invitationId, error } = await admin.rpc('owner_bootstrap_prepare', { p_email: email, p_display_name: name });
+    if (error || !invitationId) {
+      message = at(lang, 'flash.failed');
+    } else if (await deliverInvitation(invitationId as string, email, new URL('/admin/auth/confirm/', Astro.url).toString())) {
+      await logAuthEvent(null, 'auth.owner_setup_invited', {});
+      sent = true;
+    } else {
+      message = at(lang, 'flash.emailFailed');
+    }
+  }
+}
+---
+<AuthLayout title={at(lang, 'setup.title')}>
+  <h1>{at(lang, 'setup.title')}</h1>
+  {completed ? (
+    <p>{at(lang, 'setup.done')}</p>
+  ) : !configured ? (
+    <p>{at(lang, 'setup.disabled')}</p>
+  ) : sent ? (
+    <p class="flash flash--ok" role="status">{at(lang, 'setup.sent')}</p>
+  ) : (
+    <>
+      {message && <p class="flash flash--error" role="alert">{message}</p>}
+      <p>{at(lang, 'setup.intro')}</p>
+      <form class="admin-form" method="post">
+        <div class="field">
+          <label for="token">{at(lang, 'setup.token')}</label>
+          <input id="token" name="token" type="password" autocomplete="off" required maxlength="200" dir="ltr" />
+        </div>
+        <div class="field">
+          <label for="name">{at(lang, 'setup.name')}</label>
+          <input id="name" name="name" required maxlength="120" autocomplete="name" />
+        </div>
+        <div class="field">
+          <label for="email">{at(lang, 'login.email')}</label>
+          <input id="email" name="email" type="email" required maxlength="254" autocomplete="email" dir="ltr" />
+        </div>
+        <button class="btn btn--primary" type="submit">{at(lang, 'setup.submit')}</button>
+      </form>
+    </>
+  )}
+</AuthLayout>

@@ -1,0 +1,76 @@
+---
+import { createClient } from '@supabase/supabase-js';
+import { at, type AdminKey } from '../../admin/strings';
+import AdminLayout from '../../layouts/AdminLayout.astro';
+import { adminLang, errorKey, field, PASSWORD_RULE, withFlash } from '../../lib/server/admin';
+import { logAuthEvent } from '../../lib/server/auth-log';
+import { serverEnv } from '../../lib/server/env';
+import { allow } from '../../lib/server/rate-limit';
+
+const lang = adminLang(Astro.cookies);
+const a = (key: AdminKey) => at(lang, key);
+const db = Astro.locals.supabase!;
+const access = Astro.locals.access!;
+const user = Astro.locals.user!;
+let passwordError: AdminKey | null = null;
+
+if (Astro.request.method === 'POST') {
+  const form = await Astro.request.formData();
+  const intent = field(form, 'intent', 20);
+  if (intent === 'name') {
+    const { error } = await db.rpc('staff_update_own_name', { new_name: field(form, 'name', 120) });
+    return Astro.redirect(withFlash('/admin/account/', error ? 'error' : 'ok', error ? errorKey(error) : 'saved'), 303);
+  }
+  if (intent === 'password') {
+    const current = String(form.get('current') ?? '');
+    const next = String(form.get('password') ?? '');
+    if (next !== String(form.get('confirm') ?? '')) passwordError = 'password.mismatch';
+    else if (!PASSWORD_RULE.test(next)) passwordError = 'password.weak';
+    else if (!(await allow('password-change', user.id, 5, 900))) passwordError = 'login.limited';
+    else {
+      // Confirm the current password with a separate check before changing it.
+      const probe = createClient(serverEnv.supabaseUrl!, serverEnv.supabasePublishableKey!, { auth: { persistSession: false } });
+      const { error: currentError } = await probe.auth.signInWithPassword({ email: user.email!, password: current });
+      if (currentError) passwordError = 'password.wrongCurrent';
+      else {
+        await probe.auth.signOut({ scope: 'local' });
+        const { error } = await db.auth.updateUser({ password: next });
+        if (error) passwordError = 'password.failed';
+        else {
+          await logAuthEvent(user.id, 'auth.password_changed', {});
+          return Astro.redirect(withFlash('/admin/account/', 'ok', 'saved'), 303);
+        }
+      }
+    }
+    Astro.response.status = 400;
+  }
+}
+
+const { data: factors } = await db.auth.mfa.listFactors();
+const mfaOn = (factors?.totp ?? []).some((f) => f.status === 'verified');
+---
+<AdminLayout title={a('account.title')}>
+  <h1>{a('account.title')}</h1>
+  <form class="admin-card admin-form" method="post">
+    <input type="hidden" name="intent" value="name" />
+    <div class="field"><label for="name">{a('account.name')}</label><input id="name" name="name" value={access.displayName} required maxlength="120" /></div>
+    <p class="hint" dir="ltr">{access.email} · {a(`role.${access.role}`)}</p>
+    <div><button class="btn btn--primary" type="submit">{a('action.save')}</button></div>
+  </form>
+  <form class="admin-card admin-form" method="post">
+    <h2>{a('account.password')}</h2>
+    {passwordError && <p class="flash flash--error" role="alert">{a(passwordError)}</p>}
+    <input type="hidden" name="intent" value="password" />
+    <input type="email" name="username" value={user.email} autocomplete="username" hidden readonly />
+    <div class="field"><label for="current">{a('password.current')}</label><input id="current" name="current" type="password" autocomplete="current-password" required dir="ltr" /></div>
+    <div class="field"><label for="password">{a('password.new')}</label><input id="password" name="password" type="password" autocomplete="new-password" required minlength="12" maxlength="128" dir="ltr" /></div>
+    <div class="field"><label for="confirm">{a('password.confirm')}</label><input id="confirm" name="confirm" type="password" autocomplete="new-password" required minlength="12" maxlength="128" dir="ltr" /></div>
+    <p class="hint">{a('password.rules')}</p>
+    <div><button class="btn btn--primary" type="submit">{a('password.submit')}</button></div>
+  </form>
+  <section class="admin-card">
+    <h2>{a('account.mfa')}</h2>
+    <p><span class:list={['pill', mfaOn && 'pill--published']}>{mfaOn ? a('account.mfaOn') : a('account.mfaOff')}</span></p>
+    {!mfaOn && <a class="btn" href="/admin/mfa/setup/">{a('account.mfaEnable')}</a>}
+  </section>
+</AdminLayout>

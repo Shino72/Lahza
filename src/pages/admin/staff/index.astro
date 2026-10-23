@@ -1,0 +1,142 @@
+---
+import { at, type AdminKey } from '../../../admin/strings';
+import AdminLayout from '../../../layouts/AdminLayout.astro';
+import { can } from '../../../lib/server/access';
+import { adminLang, errorKey, field, withFlash } from '../../../lib/server/admin';
+import { formatDateTime } from '../../../lib/format';
+import { deleteAuthUser, deliverInvitation } from '../../../lib/server/staff';
+import { getServiceClient } from '../../../lib/server/supabase';
+import { allow } from '../../../lib/server/rate-limit';
+
+const lang = adminLang(Astro.cookies);
+const a = (key: AdminKey) => at(lang, key);
+const db = Astro.locals.supabase!;
+const access = Astro.locals.access!;
+if (!can(access, 'staff.read')) return Astro.redirect(withFlash('/admin/', 'error', 'forbidden'), 303);
+const roles = ['manager', 'editor', 'journalist'] as const;
+
+if (Astro.request.method === 'POST') {
+  const form = await Astro.request.formData();
+  const intent = field(form, 'intent', 20);
+  const back = (kind: 'ok' | 'error', key: string) => Astro.redirect(withFlash('/admin/staff/', kind, key), 303);
+  if (intent === 'invite') {
+    const email = field(form, 'email', 254).toLowerCase();
+    const name = field(form, 'name', 120);
+    const role = roles.find((r) => r === field(form, 'role', 20));
+    const permissions = form.getAll('permissions').map(String).slice(0, 30);
+    if (!role || !name || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) return back('error', 'invalid');
+    if (!(await allow('invite', access.userId, 20, 3600))) return back('error', 'failed');
+    // Authorisation happens in the database function as the signed-in user.
+    const { data: invitationId, error } = await db.rpc('staff_invite_prepare', {
+      p_email: email,
+      p_display_name: name,
+      p_role: role,
+      p_permissions: permissions,
+    });
+    if (error || !invitationId) return back('error', errorKey(error));
+    const sent = await deliverInvitation(invitationId as string, email, new URL('/admin/auth/confirm/', Astro.url).toString());
+    return sent ? back('ok', 'invited') : back('error', 'emailFailed');
+  }
+  if (intent === 'revoke') {
+    const { data: userId, error } = await db.rpc('staff_revoke_invitation', { inv_id: field(form, 'id', 64) });
+    if (error) return back('error', errorKey(error));
+    if (userId) await deleteAuthUser(userId as string);
+    return back('ok', 'revoked');
+  }
+  return back('error', 'invalid');
+}
+
+const [profilesRes, permsRes, invitesRes, catalogRes] = await Promise.all([
+  db.from('staff_profiles').select('user_id, email, display_name, role, status, created_at').order('created_at'),
+  db.from('staff_permissions').select('user_id, permission'),
+  db.from('staff_invitations').select('id, email, display_name, role, created_at, expires_at, accepted_at, revoked_at').order('created_at', { ascending: false }).limit(50),
+  db.from('permissions').select('key, description').order('key'),
+]);
+const profiles = profilesRes.data ?? [];
+const extra = new Map<string, string[]>();
+for (const p of permsRes.data ?? []) extra.set(p.user_id, [...(extra.get(p.user_id) ?? []), p.permission]);
+
+// Last sign-in comes from the auth service; only staff readers reach this page.
+const lastSignIn = new Map<string, string | undefined>();
+const { data: users } = await getServiceClient().auth.admin.listUsers({ page: 1, perPage: 1000 });
+for (const u of users?.users ?? []) lastSignIn.set(u.id, u.last_sign_in_at);
+
+const inviteState = (i: { accepted_at: string | null; revoked_at: string | null; expires_at: string }) =>
+  i.accepted_at ? 'accepted' : i.revoked_at ? 'revoked' : Date.parse(i.expires_at) < Date.now() ? 'expired' : 'pending';
+---
+<AdminLayout title={a('staff.title')}>
+  <h1>{a('staff.title')}</h1>
+  <section class="admin-card">
+    <div class="admin-table-wrap">
+      <table class="admin-table">
+        <thead><tr><th>{a('staff.name')}</th><th>{a('staff.role')}</th><th>{a('staff.status')}</th><th>{a('staff.lastLogin')}</th></tr></thead>
+        <tbody>
+          {profiles.map((p) => (
+            <tr>
+              <td>
+                {can(access, 'staff.manage') && p.role !== 'owner' && p.user_id !== access.userId
+                  ? <a href={`/admin/staff/${p.user_id}/`}><strong>{p.display_name}</strong></a>
+                  : <strong>{p.display_name}</strong>}
+                <br /><span class="hint" dir="ltr">{p.email}</span>
+                {(extra.get(p.user_id) ?? []).length > 0 && <><br /><span class="hint">+ {(extra.get(p.user_id) ?? []).join(', ')}</span></>}
+              </td>
+              <td>{a(`role.${p.role}` as AdminKey)}</td>
+              <td><span class:list={['pill', `pill--${p.status === 'active' ? 'published' : p.status}`]}>{a(`staff.status.${p.status}` as AdminKey)}</span></td>
+              <td class="hint">{lastSignIn.get(p.user_id) ? formatDateTime(lastSignIn.get(p.user_id)!, lang) : a('common.none')}</td>
+            </tr>
+          ))}
+        </tbody>
+      </table>
+    </div>
+  </section>
+
+  {can(access, 'staff.invite') && (
+    <form class="admin-card admin-form" method="post">
+      <h2>{a('staff.invite')}</h2>
+      <input type="hidden" name="intent" value="invite" />
+      <div class="row row--3">
+        <div class="field"><label for="inv-name">{a('staff.name')}</label><input id="inv-name" name="name" required maxlength="120" /></div>
+        <div class="field"><label for="inv-email">{a('staff.email')}</label><input id="inv-email" name="email" type="email" required maxlength="254" dir="ltr" /></div>
+        <div class="field">
+          <label for="inv-role">{a('staff.role')}</label>
+          <select id="inv-role" name="role">
+            {roles.map((r) => <option value={r} selected={r === 'journalist'}>{a(`role.${r}`)}</option>)}
+          </select>
+        </div>
+      </div>
+      <fieldset class="admin-grid">
+        <legend class="hint">{a('staff.extraPermissions')}</legend>
+        {(catalogRes.data ?? []).filter((p) => can(access, p.key)).map((p) => (
+          <label class="check"><input type="checkbox" name="permissions" value={p.key} /><span dir="ltr">{p.key}</span> <span class="hint">{p.description}</span></label>
+        ))}
+      </fieldset>
+      <div><button class="btn btn--primary" type="submit">{a('staff.invite')}</button></div>
+    </form>
+  )}
+
+  <section class="admin-card">
+    <h2>{a('staff.invitations')}</h2>
+    <div class="admin-table-wrap">
+      <table class="admin-table">
+        <tbody>
+          {(invitesRes.data ?? []).map((i) => (
+            <tr>
+              <td><strong>{i.display_name}</strong><br /><span class="hint" dir="ltr">{i.email}</span></td>
+              <td>{a(`role.${i.role}` as AdminKey)}</td>
+              <td><span class="pill">{a(`staff.inv.${inviteState(i)}` as AdminKey)}</span><br /><span class="hint">{a('staff.expires')}: {formatDateTime(i.expires_at, lang)}</span></td>
+              <td>
+                {can(access, 'staff.invite') && inviteState(i) !== 'accepted' && inviteState(i) !== 'revoked' && i.role !== 'owner' && (
+                  <form method="post">
+                    <input type="hidden" name="intent" value="revoke" />
+                    <input type="hidden" name="id" value={i.id} />
+                    <button class="btn btn--small btn--danger" type="submit">{a('staff.revoke')}</button>
+                  </form>
+                )}
+              </td>
+            </tr>
+          ))}
+        </tbody>
+      </table>
+    </div>
+  </section>
+</AdminLayout>

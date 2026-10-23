@@ -1,0 +1,66 @@
+---
+import ArticleView from '../../../components/ArticleView.astro';
+import StoryCard from '../../../components/StoryCard.astro';
+import { t } from '../../../i18n/strings';
+import { isLang, paths } from '../../../i18n/routes';
+import BaseLayout from '../../../layouts/BaseLayout.astro';
+import { getRepository } from '../../../lib/server/content';
+import { absoluteUrl, articleDescription, newsArticleJsonLd } from '../../../lib/seo';
+
+const { lang, slug } = Astro.params;
+if (!isLang(lang) || !slug) return new Response(null, { status: 404 });
+
+const repo = getRepository();
+const article = await repo.article(lang, slug);
+const gone = !article && (await repo.isGone(lang, slug));
+if (!article && !gone) return new Response(null, { status: 404 });
+if (gone) Astro.response.status = 410;
+
+const [categories, translation, related] = article
+  ? await Promise.all([repo.categories(), repo.translationOf(article), repo.related(article, 4)])
+  : [[], null, []];
+const category = article ? categories.find((c) => c.id === article.categoryId) : undefined;
+const path = paths.article({ lang, slug });
+const url = absoluteUrl(Astro.site, path);
+const jsonLd = article
+  ? newsArticleJsonLd({ article, category, url, imageUrl: article.image.src, logoUrl: absoluteUrl(Astro.site, '/logo.png') })
+  : undefined;
+---
+{article ? (
+  <BaseLayout
+    lang={lang}
+    title={article.seoTitle ?? article.title}
+    description={articleDescription(article)}
+    path={path}
+    alternatePath={translation ? paths.article(translation) : undefined}
+    ogType="article"
+    ogImage={article.image.src}
+    jsonLd={jsonLd}
+  >
+    <nav class="breadcrumb" aria-label="breadcrumb">
+      <ol>
+        <li><a href={paths.home(lang)}>{t(lang, 'nav.home')}</a></li>
+        {category && <li><a href={paths.category(lang, category)}>{category.name[lang]}</a></li>}
+      </ol>
+    </nav>
+    <div class="article-layout">
+      <ArticleView article={article} category={category} url={url} translation={translation} />
+      {related.length > 0 && (
+        <aside class="section" aria-labelledby="related-heading">
+          <div class="section-head"><h2 id="related-heading">{t(lang, 'article.related')}</h2></div>
+          <div class="panel">
+            {related.map((item) => <StoryCard article={item} category={category} variant="row" />)}
+          </div>
+        </aside>
+      )}
+    </div>
+  </BaseLayout>
+) : (
+  <BaseLayout lang={lang} title={t(lang, 'gone.title')} description={t(lang, 'gone.body')} path={path} noindex>
+    <div class="section panel panel--padded prose">
+      <h1 class="page-title">{t(lang, 'gone.title')}</h1>
+      <p>{t(lang, 'gone.body')}</p>
+      <p><a class="kicker" href={paths.home(lang)}>{t(lang, 'nav.home')}</a></p>
+    </div>
+  </BaseLayout>
+)}

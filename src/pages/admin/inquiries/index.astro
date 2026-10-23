@@ -1,0 +1,45 @@
+---
+import { at, type AdminKey } from '../../../admin/strings';
+import { t } from '../../../i18n/strings';
+import AdminLayout from '../../../layouts/AdminLayout.astro';
+import { can } from '../../../lib/server/access';
+import { adminLang, withFlash } from '../../../lib/server/admin';
+import { formatDateTime } from '../../../lib/format';
+
+const lang = adminLang(Astro.cookies);
+const a = (key: AdminKey) => at(lang, key);
+const db = Astro.locals.supabase!;
+if (!can(Astro.locals.access, 'inquiry.read')) return Astro.redirect(withFlash('/admin/', 'error', 'forbidden'), 303);
+
+const statuses = ['new', 'in_progress', 'closed', 'spam'] as const;
+const status = statuses.find((s) => s === Astro.url.searchParams.get('status'));
+let query = db.from('ad_inquiries').select('id, company, contact_person, ad_type, status, created_at').order('created_at', { ascending: false }).limit(100);
+if (status) query = query.eq('status', status);
+const { data } = await query;
+---
+<AdminLayout title={a('inquiries.title')}>
+  <h1>{a('inquiries.title')}</h1>
+  <nav class="admin-actions">
+    <a class="btn btn--small" href="/admin/inquiries/">{a('articles.all')}</a>
+    {statuses.map((s) => <a class="btn btn--small" href={`?status=${s}`} aria-current={s === status ? 'page' : undefined}>{a(`inquiries.status.${s}`)}</a>)}
+  </nav>
+  <section class="admin-card">
+    {(data ?? []).length === 0 ? <p class="hint">{a('inquiries.empty')}</p> : (
+      <div class="admin-table-wrap">
+        <table class="admin-table">
+          <thead><tr><th>{a('inquiries.company')}</th><th>{a('inquiries.type')}</th><th>{a('editor.status')}</th><th>{a('inquiries.received')}</th></tr></thead>
+          <tbody>
+            {(data ?? []).map((r) => (
+              <tr>
+                <td><a href={`/admin/inquiries/${r.id}/`} dir="auto"><strong>{r.company}</strong></a><br /><span class="hint" dir="auto">{r.contact_person}</span></td>
+                <td>{t(lang, `ad.type.${r.ad_type as 'banner' | 'sponsored' | 'campaign' | 'other'}`)}</td>
+                <td><span class:list={['pill', `pill--${r.status}`]}>{a(`inquiries.status.${r.status}` as AdminKey)}</span></td>
+                <td class="hint">{formatDateTime(r.created_at, lang)}</td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
+    )}
+  </section>
+</AdminLayout>

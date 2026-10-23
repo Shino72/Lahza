@@ -1,0 +1,47 @@
+name: Database migrations
+
+# Applies pending files from supabase/migrations to the production project.
+# Run it manually from the Actions tab. It only adds what has not been applied
+# yet (tracked by Supabase); it never resets or wipes data.
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  migrate:
+    runs-on: ubuntu-latest
+    environment: production
+    env:
+      SUPABASE_DB_URL: ${{ secrets.SUPABASE_DB_URL }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: supabase/setup-cli@v1
+        with:
+          version: 2.120.0
+      - name: Install PostgreSQL 17 client
+        if: ${{ vars.BACKUPS_ENABLED == 'true' }}
+        run: |
+          sudo install -d /usr/share/postgresql-common/pgdg
+          sudo curl -fsSL -o /usr/share/postgresql-common/pgdg/apt.postgresql.org.asc https://www.postgresql.org/media/keys/ACCC4CF8.asc
+          echo "deb [signed-by=/usr/share/postgresql-common/pgdg/apt.postgresql.org.asc] https://apt.postgresql.org/pub/repos/apt $(lsb_release -cs)-pgdg main" | sudo tee /etc/apt/sources.list.d/pgdg.list
+          sudo apt-get update -q && sudo apt-get install -y -q postgresql-client-17
+          echo "/usr/lib/postgresql/17/bin" >> "$GITHUB_PATH"
+      - name: Back up before migrating
+        if: ${{ vars.BACKUPS_ENABLED == 'true' }}
+        env:
+          SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
+          SUPABASE_SECRET_KEY: ${{ secrets.SUPABASE_SECRET_KEY }}
+          BACKUP_PASSPHRASE: ${{ secrets.BACKUP_PASSPHRASE }}
+        run: scripts/backup.sh
+      - uses: actions/upload-artifact@v4
+        if: ${{ vars.BACKUPS_ENABLED == 'true' }}
+        with:
+          name: lahza-pre-migration-${{ github.run_id }}
+          path: backup-*.tar.gz.enc
+          retention-days: 30
+      - name: List pending migrations
+        run: supabase db push --db-url "$SUPABASE_DB_URL" --dry-run
+      - name: Apply pending migrations
+        run: supabase db push --db-url "$SUPABASE_DB_URL" --yes

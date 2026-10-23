@@ -1,0 +1,77 @@
+---
+import type { Article, Category } from '../content/types';
+import { t } from '../i18n/strings';
+import { paths } from '../i18n/routes';
+import { formatDateTime } from '../lib/format';
+import Cover from './Cover.astro';
+import Icon from './Icon.astro';
+import ShareLinks from './ShareLinks.astro';
+
+interface Props {
+  article: Article;
+  category?: Category;
+  url: string;
+  translation?: Article | null;
+  /** Dashboard preview: no sharing links. */
+  preview?: boolean;
+}
+const { article, category, url, translation, preview = false } = Astro.props;
+const lang = article.lang;
+const coverKey = category?.slug ?? article.categoryId;
+---
+<article class="article">
+  <header class="article__head">
+    <div class="badge-row">
+      {category && <a class="kicker" href={paths.category(lang, category)}>{category.name[lang]}</a>}
+      {article.isSample && <span class="sample-badge">{t(lang, 'sample.badge')}</span>}
+    </div>
+    <h1 class="article__title">{article.title}</h1>
+    {article.subtitle && <p class="article__subtitle">{article.subtitle}</p>}
+    {article.summary && <p class="article__subtitle">{article.summary}</p>}
+    <div class="article__meta">
+      <span>{t(lang, 'article.by')} <strong>{article.author}</strong></span>
+      <span>{t(lang, 'article.published')} <time datetime={article.publishAt}>{formatDateTime(article.publishAt, lang)}</time></span>
+    </div>
+  </header>
+  <figure class="article__figure">
+    <Cover image={article.image} categoryId={coverKey} lang={lang} eager showLabel />
+    {(article.image.caption || !article.image.src) && (
+      <figcaption>{article.image.caption ?? `${t(lang, 'article.placeholderImage')}: ${article.image.alt}`}</figcaption>
+    )}
+  </figure>
+  <div class="article__body">
+    {article.body.map((block) => {
+      switch (block.type) {
+        case 'heading':
+          return <h2>{block.text}</h2>;
+        case 'quote':
+          return <blockquote><p>{block.text}</p>{block.cite && <cite>{block.cite}</cite>}</blockquote>;
+        case 'list':
+          return <ul>{block.items.map((item) => <li>{item}</li>)}</ul>;
+        case 'image':
+          return block.image?.src ? (
+            <figure class="article__inline-figure">
+              <img src={block.image.src} alt={block.image.alt} width={block.image.width} height={block.image.height} loading="lazy" decoding="async" />
+              {(block.caption || block.image.caption) && <figcaption>{block.caption || block.image.caption}</figcaption>}
+            </figure>
+          ) : null;
+        default:
+          return <p>{block.text}</p>;
+      }
+    })}
+  </div>
+  <footer class="article__foot">
+    {article.tags.length > 0 && (
+      <ul class="tags" aria-label={t(lang, 'article.tags')}>
+        {article.tags.map((tag) => <li>{tag}</li>)}
+      </ul>
+    )}
+    {!preview && <ShareLinks lang={lang} url={url} title={article.title} />}
+    {!preview && !translation && (
+      <p class="hint-line">{t(lang, 'article.noTranslation')} <a href={paths.home(lang === 'ar' ? 'en' : 'ar')} hreflang={lang === 'ar' ? 'en' : 'ar'} lang={lang === 'ar' ? 'en' : 'ar'}>{t(lang, 'article.otherEdition')}</a></p>
+    )}
+    {translation && (
+      <a class="translation-link" href={paths.article(translation)} hreflang={translation.lang} lang={translation.lang}><Icon name="globe" />{t(lang, 'article.readIn')}</a>
+    )}
+  </footer>
+</article>

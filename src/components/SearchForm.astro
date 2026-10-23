@@ -1,0 +1,19 @@
+---
+import type { Lang } from '../content/types';
+import { t } from '../i18n/strings';
+import { paths } from '../i18n/routes';
+import Icon from './Icon.astro';
+
+interface Props {
+  lang: Lang;
+  id: string;
+  className?: string;
+  value?: string;
+}
+const { lang, id, className = '', value = '' } = Astro.props;
+---
+<form class:list={['search-form', className]} role="search" action={paths.search(lang)} method="get">
+  <label class="sr-only" for={id}>{t(lang, 'search.label')}</label>
+  <input id={id} type="search" name="q" value={value} placeholder={t(lang, 'search.placeholder')} maxlength="100" autocomplete="off" />
+  <button type="submit"><Icon name="search" /><span>{t(lang, 'search.submit')}</span></button>
+</form>

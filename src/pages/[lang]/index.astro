@@ -1,0 +1,79 @@
+---
+import SearchForm from '../../components/SearchForm.astro';
+import StoryCard from '../../components/StoryCard.astro';
+import Ticker from '../../components/Ticker.astro';
+import { siteName } from '../../config/site';
+import { t } from '../../i18n/strings';
+import { isLang, otherLang, paths } from '../../i18n/routes';
+import BaseLayout from '../../layouts/BaseLayout.astro';
+import { getRepository } from '../../lib/server/content';
+
+const lang = Astro.params.lang;
+if (!isLang(lang)) return new Response(null, { status: 404 });
+
+const repo = getRepository();
+const [categories, settings, home, latestPage] = await Promise.all([
+  repo.categories(),
+  repo.settings(),
+  repo.homepage(lang),
+  repo.latest(lang, { perPage: 40 }),
+]);
+const categoryById = new Map(categories.map((c) => [c.id, c]));
+const published = latestPage.items;
+
+const lead = home.featured[0] ?? published[0];
+const shown = new Set<string>(lead ? [lead.id] : []);
+const top = (home.featured.length > 1 ? home.featured.slice(1) : published.filter((a) => a.id !== lead?.id)).slice(0, 4);
+top.forEach((a) => shown.add(a.id));
+const latest = published.filter((a) => !shown.has(a.id)).slice(0, 8);
+const blocks = categories
+  .map((category) => ({ category, articles: published.filter((a) => a.categoryId === category.id).slice(0, 4) }))
+  .filter((block) => block.articles.length > 0);
+---
+<BaseLayout lang={lang} title={siteName[lang]} description={settings.tagline[lang]} path={paths.home(lang)} alternatePath={paths.home(otherLang(lang))}>
+  <h1 class="sr-only">{siteName[lang]} — {settings.tagline[lang]}</h1>
+  <div class="mobile-search"><SearchForm lang={lang} id="home-q" /></div>
+  <Ticker lang={lang} items={home.ticker} />
+
+  {published.length === 0 ? (
+    <p class="empty">{t(lang, 'home.empty')}</p>
+  ) : (
+    <>
+      <div class="top-grid">
+        {lead && <StoryCard article={lead} category={categoryById.get(lead.categoryId)} variant="lead" headingLevel={2} eager />}
+        {top.length > 0 && (
+          <section aria-labelledby="top-heading">
+            <div class="section-head"><h2 id="top-heading">{t(lang, 'home.top')}</h2></div>
+            <div class="panel">
+              {top.map((article) => <StoryCard article={article} category={categoryById.get(article.categoryId)} variant="row" />)}
+            </div>
+          </section>
+        )}
+      </div>
+
+      {latest.length > 0 && (
+        <section class="section" aria-labelledby="latest-heading">
+          <div class="section-head"><h2 id="latest-heading">{t(lang, 'home.latest')}</h2></div>
+          <div class="panel list-grid">
+            {latest.map((article) => <StoryCard article={article} category={categoryById.get(article.categoryId)} variant="row" />)}
+          </div>
+        </section>
+      )}
+
+      <div class="section category-blocks">
+        {blocks.map(({ category, articles }) => (
+          <section class="category-block" aria-labelledby={`block-${category.slug}`}>
+            <div class="section-head">
+              <h2 id={`block-${category.slug}`}><a href={paths.category(lang, category)}>{category.name[lang]}</a></h2>
+              <a href={paths.category(lang, category)}>{t(lang, 'home.more')}</a>
+            </div>
+            <div class="panel">
+              <StoryCard article={articles[0]!} category={category} variant="tile" />
+              {articles.slice(1).map((article) => <StoryCard article={article} category={category} variant="row" />)}
+            </div>
+          </section>
+        ))}
+      </div>
+    </>
+  )}
+</BaseLayout>

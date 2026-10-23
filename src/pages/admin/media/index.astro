@@ -1,0 +1,112 @@
+---
+import { at, type AdminKey } from '../../../admin/strings';
+import AdminLayout from '../../../layouts/AdminLayout.astro';
+import { can } from '../../../lib/server/access';
+import { adminLang, errorKey, field, withFlash } from '../../../lib/server/admin';
+import { ImageRejected, processImage, storeImage } from '../../../lib/server/media';
+import { loadLibrary } from '../../../lib/server/media-library';
+import { allow } from '../../../lib/server/rate-limit';
+
+const lang = adminLang(Astro.cookies);
+const a = (key: AdminKey) => at(lang, key);
+const db = Astro.locals.supabase!;
+const access = Astro.locals.access!;
+if (!can(access, 'media.upload') && !can(access, 'media.manage')) return Astro.redirect(withFlash('/admin/', 'error', 'forbidden'), 303);
+
+if (Astro.request.method === 'POST') {
+  const form = await Astro.request.formData();
+  const intent = field(form, 'intent', 20);
+  const back = (kind: 'ok' | 'error', key: string) => Astro.redirect(withFlash('/admin/media/', kind, key), 303);
+  if (intent === 'upload') {
+    const file = form.get('file');
+    if (!(file instanceof File) || !(await allow('upload', access.userId, 60, 3600))) return back('error', 'badImage');
+    try {
+      const image = await processImage(await file.arrayBuffer());
+      await storeImage(db, access.userId, image, {
+        altAr: field(form, 'alt_ar', 300),
+        altEn: field(form, 'alt_en', 300),
+        captionAr: field(form, 'caption_ar', 300),
+        captionEn: field(form, 'caption_en', 300),
+      });
+      return back('ok', 'uploaded');
+    } catch (error) {
+      return back('error', error instanceof ImageRejected ? 'badImage' : 'failed');
+    }
+  }
+  const id = field(form, 'id', 64);
+  if (intent === 'update') {
+    const { data, error } = await db
+      .from('media_assets')
+      .update({
+        alt_ar: field(form, 'alt_ar', 300),
+        alt_en: field(form, 'alt_en', 300),
+        caption_ar: field(form, 'caption_ar', 300),
+        caption_en: field(form, 'caption_en', 300),
+      })
+      .eq('id', id)
+      .select('id');
+    if (error) return back('error', errorKey(error));
+    return back(data?.length ? 'ok' : 'error', data?.length ? 'saved' : 'forbidden');
+  }
+  if (intent === 'delete') {
+    const { data, error } = await db.from('media_assets').delete().eq('id', id).select('path');
+    if (error) return back('error', errorKey(error));
+    if (!data?.length) return back('error', 'forbidden');
+    await db.storage.from('media-private').remove([data[0]!.path as string]);
+    return back('ok', 'deleted');
+  }
+  return back('error', 'invalid');
+}
+
+const items = await loadLibrary(db, { limit: 120 });
+---
+<AdminLayout title={a('media.title')}>
+  <h1>{a('media.title')}</h1>
+  {can(access, 'media.upload') && (
+    <form class="admin-card admin-form" method="post" enctype="multipart/form-data">
+      <h2>{a('media.upload')}</h2>
+      <input type="hidden" name="intent" value="upload" />
+      <div class="field">
+        <label for="file">{a('media.file')}</label>
+        <input id="file" name="file" type="file" accept="image/jpeg,image/png,image/webp" required />
+      </div>
+      <div class="row row--2">
+        <div class="field"><label for="alt_ar">{a('media.altAr')}</label><input id="alt_ar" name="alt_ar" maxlength="300" dir="rtl" /></div>
+        <div class="field"><label for="alt_en">{a('media.altEn')}</label><input id="alt_en" name="alt_en" maxlength="300" dir="ltr" /></div>
+        <div class="field"><label for="caption_ar">{a('media.captionAr')}</label><input id="caption_ar" name="caption_ar" maxlength="300" dir="rtl" /></div>
+        <div class="field"><label for="caption_en">{a('media.captionEn')}</label><input id="caption_en" name="caption_en" maxlength="300" dir="ltr" /></div>
+      </div>
+      <div><button class="btn btn--primary" type="submit">{a('action.upload')}</button></div>
+    </form>
+  )}
+  <section class="admin-card">
+    {items.length === 0 ? <p class="hint">{a('media.empty')}</p> : (
+      <div class="media-grid">
+        {items.map((m) => (
+          <details class="media-tile">
+            <summary>
+              <img src={m.src} alt={lang === 'ar' ? m.alt_ar : m.alt_en} loading="lazy" />
+              <span class:list={['pill', m.is_public ? 'pill--published' : '']}>{m.is_public ? a('media.public') : a('media.private')}</span>
+            </summary>
+            <form class="admin-form" method="post">
+              <input type="hidden" name="intent" value="update" />
+              <input type="hidden" name="id" value={m.id} />
+              <input name="alt_ar" value={m.alt_ar} aria-label={a('media.altAr')} placeholder={a('media.altAr')} dir="rtl" maxlength="300" />
+              <input name="alt_en" value={m.alt_en} aria-label={a('media.altEn')} placeholder={a('media.altEn')} dir="ltr" maxlength="300" />
+              <input name="caption_ar" value={m.caption_ar} aria-label={a('media.captionAr')} placeholder={a('media.captionAr')} dir="rtl" maxlength="300" />
+              <input name="caption_en" value={m.caption_en} aria-label={a('media.captionEn')} placeholder={a('media.captionEn')} dir="ltr" maxlength="300" />
+              <button class="btn btn--small" type="submit">{a('action.save')}</button>
+            </form>
+            {!m.is_public && (
+              <form method="post">
+                <input type="hidden" name="intent" value="delete" />
+                <input type="hidden" name="id" value={m.id} />
+                <button class="btn btn--small btn--danger" type="submit">{a('editor.remove')}</button>
+              </form>
+            )}
+          </details>
+        ))}
+      </div>
+    )}
+  </section>
+</AdminLayout>

@@ -1,0 +1,9 @@
+---
+import { logAuthEvent } from '../../lib/server/auth-log';
+
+if (Astro.request.method !== 'POST') return Astro.redirect('/admin/', 303);
+const user = Astro.locals.user;
+await Astro.locals.supabase!.auth.signOut();
+if (user) await logAuthEvent(user.id, 'auth.logout', {});
+return Astro.redirect('/admin/login/?signed_out=1', 303);
+---

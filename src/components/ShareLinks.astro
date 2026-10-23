@@ -1,0 +1,35 @@
+---
+import type { Lang } from '../content/types';
+import { t } from '../i18n/strings';
+import { shareLinks } from '../lib/share';
+import Icon from './Icon.astro';
+
+interface Props {
+  lang: Lang;
+  url: string;
+  title: string;
+}
+const { lang, url, title } = Astro.props;
+const links = shareLinks(url, title);
+---
+<div class="share">
+  <span class="share__title">{t(lang, 'article.share')}</span>
+  <a class="share__whatsapp" href={links.whatsapp} target="_blank" rel="noopener noreferrer"><Icon name="whatsapp" />WhatsApp</a>
+  <a href={links.facebook} target="_blank" rel="noopener noreferrer"><Icon name="facebook" />Facebook</a>
+  <a href={links.x} target="_blank" rel="noopener noreferrer"><Icon name="x" />X</a>
+  <a href={links.telegram} target="_blank" rel="noopener noreferrer"><Icon name="telegram" />Telegram</a>
+  <button type="button" data-copy-url={url} data-copied-label={t(lang, 'article.copied')}><Icon name="link" /><span>{t(lang, 'article.copy')}</span></button>
+</div>
+<script>
+  for (const button of document.querySelectorAll<HTMLButtonElement>('[data-copy-url]')) {
+    button.addEventListener('click', async () => {
+      const label = button.querySelector('span');
+      try {
+        await navigator.clipboard.writeText(button.dataset.copyUrl ?? '');
+        if (label) label.textContent = button.dataset.copiedLabel ?? '';
+      } catch {
+        // Clipboard access can be denied; the share links remain available.
+      }
+    });
+  }
+</script>

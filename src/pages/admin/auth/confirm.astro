@@ -1,0 +1,31 @@
+---
+import { at } from '../../../admin/strings';
+import AuthLayout from '../../../layouts/AuthLayout.astro';
+import { adminLang } from '../../../lib/server/admin';
+
+// Email links only show a button; the one-time token is spent on POST so that
+// link scanners in mail clients cannot use it up.
+const lang = adminLang(Astro.cookies);
+const params = Astro.request.method === 'POST' ? await Astro.request.formData() : Astro.url.searchParams;
+const tokenHash = String(params.get('token_hash') ?? '').slice(0, 500);
+const type = params.get('type') === 'recovery' ? 'recovery' : params.get('type') === 'invite' ? 'invite' : null;
+
+if (!tokenHash || !type) return Astro.redirect('/admin/login/?error=link', 303);
+
+if (Astro.request.method === 'POST') {
+  const supabase = Astro.locals.supabase!;
+  await supabase.auth.signOut({ scope: 'local' });
+  const { error } = await supabase.auth.verifyOtp({ token_hash: tokenHash, type });
+  if (error) return Astro.redirect('/admin/login/?error=link', 303);
+  return Astro.redirect(`/admin/set-password/?flow=${type}`, 303);
+}
+---
+<AuthLayout title={at(lang, 'confirm.title')}>
+  <h1>{at(lang, 'confirm.title')}</h1>
+  <p>{at(lang, type === 'invite' ? 'confirm.invite' : 'confirm.recovery')}</p>
+  <form method="post">
+    <input type="hidden" name="token_hash" value={tokenHash} />
+    <input type="hidden" name="type" value={type} />
+    <button class="btn btn--primary" type="submit">{at(lang, 'confirm.submit')}</button>
+  </form>
+</AuthLayout>

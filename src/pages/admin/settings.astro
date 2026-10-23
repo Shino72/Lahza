@@ -1,0 +1,94 @@
+---
+import { z } from 'zod';
+import { at, type AdminKey } from '../../admin/strings';
+import AdminLayout from '../../layouts/AdminLayout.astro';
+import { can } from '../../lib/server/access';
+import { adminLang, errorKey, field, withFlash } from '../../lib/server/admin';
+import { getRepository } from '../../lib/server/content';
+
+const lang = adminLang(Astro.cookies);
+const a = (key: AdminKey) => at(lang, key);
+const db = Astro.locals.supabase!;
+if (!can(Astro.locals.access, 'settings.manage')) return Astro.redirect(withFlash('/admin/', 'error', 'forbidden'), 303);
+
+const text = (max: number) => z.string().trim().min(1).max(max);
+const schema = z.object({
+  contact: z.object({
+    phone: z.string().trim().regex(/^\+?[0-9 ]{7,20}$/),
+    phoneLabel: text(60),
+    whatsapp: z.string().trim().regex(/^https:\/\/wa\.me\/[0-9]{7,15}$/),
+    email: z.email().max(254),
+  }),
+  leadership: z.array(z.object({ roleAr: text(80), roleEn: text(80), nameAr: text(80), nameEn: text(80) })).min(1).max(6),
+  advertise: z.object({ introAr: text(1000), introEn: text(1000) }),
+  tagline: z.object({ ar: text(120), en: text(120) }),
+});
+
+if (Astro.request.method === 'POST') {
+  const form = await Astro.request.formData();
+  const leadership = [0, 1, 2, 3]
+    .map((i) => ({
+      roleAr: field(form, `l${i}_roleAr`, 80),
+      roleEn: field(form, `l${i}_roleEn`, 80),
+      nameAr: field(form, `l${i}_nameAr`, 80),
+      nameEn: field(form, `l${i}_nameEn`, 80),
+    }))
+    .filter((l) => l.roleAr || l.roleEn || l.nameAr || l.nameEn);
+  const parsed = schema.safeParse({
+    contact: {
+      phone: field(form, 'phone', 30),
+      phoneLabel: field(form, 'phoneLabel', 60),
+      whatsapp: field(form, 'whatsapp', 100),
+      email: field(form, 'email', 254),
+    },
+    leadership,
+    advertise: { introAr: field(form, 'introAr', 1000), introEn: field(form, 'introEn', 1000) },
+    tagline: { ar: field(form, 'taglineAr', 120), en: field(form, 'taglineEn', 120) },
+  });
+  if (!parsed.success) return Astro.redirect(withFlash('/admin/settings/', 'error', 'invalid'), 303);
+  const rows = Object.entries(parsed.data).map(([key, value]) => ({ key, value }));
+  const { error } = await db.from('site_settings').upsert(rows, { onConflict: 'key' });
+  return Astro.redirect(withFlash('/admin/settings/', error ? 'error' : 'ok', error ? errorKey(error) : 'saved'), 303);
+}
+
+const settings = await getRepository().settings();
+const leaders = [...settings.leadership, ...Array(4).fill(null)].slice(0, 4);
+---
+<AdminLayout title={a('settings.title')}>
+  <h1>{a('settings.title')}</h1>
+  <form class="admin-form" method="post">
+    <section class="admin-card admin-form">
+      <h2>{a('settings.contact')}</h2>
+      <div class="row row--2">
+        <div class="field"><label for="phone">{a('settings.phone')}</label><input id="phone" name="phone" value={settings.contact.phone} required dir="ltr" /></div>
+        <div class="field"><label for="phoneLabel">{a('settings.phoneLabel')}</label><input id="phoneLabel" name="phoneLabel" value={settings.contact.phoneLabel} required /></div>
+        <div class="field"><label for="whatsapp">{a('settings.whatsapp')}</label><input id="whatsapp" name="whatsapp" value={settings.contact.whatsapp} required dir="ltr" pattern="https://wa\.me/[0-9]{7,15}" /></div>
+        <div class="field"><label for="email">{a('settings.email')}</label><input id="email" name="email" type="email" value={settings.contact.email} required dir="ltr" /></div>
+      </div>
+    </section>
+    <section class="admin-card admin-form">
+      <h2>{a('settings.leadership')}</h2>
+      {leaders.map((l, i) => (
+        <div class="row row--2">
+          <div class="field"><label for={`l${i}_roleAr`}>{a('settings.roleAr')}</label><input id={`l${i}_roleAr`} name={`l${i}_roleAr`} value={l?.role.ar ?? ''} dir="rtl" /></div>
+          <div class="field"><label for={`l${i}_nameAr`}>{a('settings.nameAr')}</label><input id={`l${i}_nameAr`} name={`l${i}_nameAr`} value={l?.name.ar ?? ''} dir="rtl" /></div>
+          <div class="field"><label for={`l${i}_roleEn`}>{a('settings.roleEn')}</label><input id={`l${i}_roleEn`} name={`l${i}_roleEn`} value={l?.role.en ?? ''} dir="ltr" /></div>
+          <div class="field"><label for={`l${i}_nameEn`}>{a('settings.nameEn')}</label><input id={`l${i}_nameEn`} name={`l${i}_nameEn`} value={l?.name.en ?? ''} dir="ltr" /></div>
+        </div>
+      ))}
+    </section>
+    <section class="admin-card admin-form">
+      <h2>{a('settings.advertise')}</h2>
+      <div class="field"><label for="introAr">{a('settings.introAr')}</label><textarea id="introAr" name="introAr" rows="3" required dir="rtl">{settings.advertiseIntro.ar}</textarea></div>
+      <div class="field"><label for="introEn">{a('settings.introEn')}</label><textarea id="introEn" name="introEn" rows="3" required dir="ltr">{settings.advertiseIntro.en}</textarea></div>
+    </section>
+    <section class="admin-card admin-form">
+      <h2>{a('settings.tagline')}</h2>
+      <div class="row row--2">
+        <div class="field"><label for="taglineAr">{a('settings.taglineAr')}</label><input id="taglineAr" name="taglineAr" value={settings.tagline.ar} required dir="rtl" /></div>
+        <div class="field"><label for="taglineEn">{a('settings.taglineEn')}</label><input id="taglineEn" name="taglineEn" value={settings.tagline.en} required dir="ltr" /></div>
+      </div>
+    </section>
+    <div><button class="btn btn--primary" type="submit">{a('action.save')}</button></div>
+  </form>
+</AdminLayout>

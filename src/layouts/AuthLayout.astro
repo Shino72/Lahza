@@ -1,0 +1,39 @@
+---
+import '@fontsource/cairo/arabic-400.css';
+import '@fontsource/cairo/arabic-700.css';
+import '@fontsource/cairo/arabic-800.css';
+import '@fontsource/cairo/latin-400.css';
+import '@fontsource/cairo/latin-700.css';
+import '../styles/global.css';
+import '../styles/admin.css';
+
+import Logo from '../components/Logo.astro';
+import { at } from '../admin/strings';
+import { dir } from '../i18n/routes';
+import { adminLang } from '../lib/server/admin';
+
+interface Props {
+  title: string;
+}
+const { title } = Astro.props;
+const lang = adminLang(Astro.cookies);
+---
+<!doctype html>
+<html lang={lang} dir={dir(lang)}>
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <meta name="robots" content="noindex, nofollow" />
+    <title>{title} | {at(lang, 'brand')}</title>
+    <link rel="icon" href="/favicon.svg" type="image/svg+xml" />
+  </head>
+  <body>
+    <main class="auth-page">
+      <div class="auth-card">
+        <Logo lang={lang} />
+        <slot />
+        <p class="hint"><a href={`?ui=${lang === 'ar' ? 'en' : 'ar'}`}>{at(lang, 'ui.switch')}</a></p>
+      </div>
+    </main>
+  </body>
+</html>

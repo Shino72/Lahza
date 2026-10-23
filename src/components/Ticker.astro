@@ -1,0 +1,22 @@
+---
+import type { Article, Lang, TickerItem } from '../content/types';
+import { t } from '../i18n/strings';
+import { paths } from '../i18n/routes';
+
+interface Props {
+  lang: Lang;
+  items: (TickerItem & { article?: Article })[];
+}
+const { lang, items } = Astro.props;
+---
+{items.length > 0 && (
+  <section class="ticker" aria-label={t(lang, 'ticker.label')}>
+    <div class="ticker__label"><span class="ticker__dot" aria-hidden="true"></span>{t(lang, 'ticker.label')}</div>
+    <div class="ticker__viewport">
+      <ul class="ticker__track">
+        {items.map((item) => <li>{item.article ? <a href={paths.article(item.article)}>{item.text}</a> : item.text}</li>)}
+        {items.map((item) => <li aria-hidden="true">{item.article ? <a href={paths.article(item.article)} tabindex="-1">{item.text}</a> : item.text}</li>)}
+      </ul>
+    </div>
+  </section>
+)}

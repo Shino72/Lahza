@@ -1,0 +1,55 @@
+---
+import { at, type AdminKey } from '../../admin/strings';
+import AdminLayout from '../../layouts/AdminLayout.astro';
+import { can } from '../../lib/server/access';
+import { adminLang, withFlash } from '../../lib/server/admin';
+import { formatDateTime } from '../../lib/format';
+
+const lang = adminLang(Astro.cookies);
+const a = (key: AdminKey) => at(lang, key);
+const db = Astro.locals.supabase!;
+if (!can(Astro.locals.access, 'audit.read')) return Astro.redirect(withFlash('/admin/', 'error', 'forbidden'), 303);
+
+const PER_PAGE = 50;
+const page = Math.max(1, Number(Astro.url.searchParams.get('page') ?? 1) || 1);
+const { data, count } = await db
+  .from('audit_events')
+  .select('id, actor_id, action, target_type, target_id, details, created_at', { count: 'exact' })
+  .order('id', { ascending: false })
+  .range((page - 1) * PER_PAGE, page * PER_PAGE - 1);
+const { data: people } = await db.from('staff_profiles').select('user_id, display_name');
+const nameOf = new Map((people ?? []).map((p) => [p.user_id, p.display_name]));
+const totalPages = Math.max(1, Math.ceil((count ?? 0) / PER_PAGE));
+const summary = (d: Record<string, unknown>) =>
+  Object.entries(d)
+    .filter(([, v]) => v !== null && v !== '')
+    .map(([k, v]) => `${k}: ${Array.isArray(v) ? v.join(', ') : String(v)}`)
+    .join(' · ');
+---
+<AdminLayout title={a('audit.title')}>
+  <h1>{a('audit.title')}</h1>
+  <section class="admin-card">
+    <div class="admin-table-wrap">
+      <table class="admin-table">
+        <thead><tr><th>{a('audit.when')}</th><th>{a('audit.who')}</th><th>{a('audit.action')}</th><th>{a('audit.target')}</th></tr></thead>
+        <tbody>
+          {(data ?? []).map((e) => (
+            <tr>
+              <td class="hint">{formatDateTime(e.created_at, lang)}</td>
+              <td>{e.actor_id ? nameOf.get(e.actor_id) ?? e.actor_id.slice(0, 8) : a('audit.system')}</td>
+              <td dir="ltr"><code>{e.action}</code></td>
+              <td dir="auto" class="hint">{summary(e.details as Record<string, unknown>)}</td>
+            </tr>
+          ))}
+        </tbody>
+      </table>
+    </div>
+    {totalPages > 1 && (
+      <div class="admin-actions">
+        {page > 1 && <a class="btn btn--small" href={`?page=${page - 1}`}>{a('common.prev')}</a>}
+        <span class="hint">{page} / {totalPages}</span>
+        {page < totalPages && <a class="btn btn--small" href={`?page=${page + 1}`}>{a('common.next')}</a>}
+      </div>
+    )}
+  </section>
+</AdminLayout>

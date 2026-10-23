@@ -1,0 +1,49 @@
+---
+import { at } from '../../../admin/strings';
+import AuthLayout from '../../../layouts/AuthLayout.astro';
+import { adminLang, field, safeNext } from '../../../lib/server/admin';
+import { logAuthEvent } from '../../../lib/server/auth-log';
+import { allow } from '../../../lib/server/rate-limit';
+
+const lang = adminLang(Astro.cookies);
+const supabase = Astro.locals.supabase!;
+const user = Astro.locals.user!;
+const next = safeNext(Astro.url.searchParams.get('next'));
+let message: string | null = null;
+
+const { data: factors } = await supabase.auth.mfa.listFactors();
+const factor = (factors?.totp ?? []).find((f) => f.status === 'verified');
+if (!factor) return Astro.redirect('/admin/mfa/setup/', 303);
+
+if (Astro.request.method === 'POST') {
+  const form = await Astro.request.formData();
+  const code = field(form, 'code', 10).replace(/\s/g, '');
+  if (!(await allow('mfa', user.id, 10, 900))) {
+    message = at(lang, 'mfa.limited');
+  } else {
+    const { error } = await supabase.auth.mfa.challengeAndVerify({ factorId: factor.id, code });
+    if (!error) {
+      await logAuthEvent(user.id, 'auth.mfa_verified', {});
+      return Astro.redirect(next, 303);
+    }
+    await logAuthEvent(user.id, 'auth.mfa_failed', {});
+    message = at(lang, 'mfa.invalid');
+  }
+  Astro.response.status = 400;
+}
+---
+<AuthLayout title={at(lang, 'mfa.verifyTitle')}>
+  <h1>{at(lang, 'mfa.verifyTitle')}</h1>
+  {message && <p class="flash flash--error" role="alert">{message}</p>}
+  <p>{at(lang, 'mfa.verifyIntro')}</p>
+  <form class="admin-form" method="post">
+    <div class="field">
+      <label for="code">{at(lang, 'mfa.code')}</label>
+      <input id="code" name="code" inputmode="numeric" autocomplete="one-time-code" pattern="[0-9 ]{6,7}" required maxlength="7" dir="ltr" />
+    </div>
+    <button class="btn btn--primary" type="submit">{at(lang, 'mfa.verify')}</button>
+  </form>
+  <form method="post" action="/admin/logout/">
+    <button class="btn btn--small" type="submit">{at(lang, 'nav.logout')}</button>
+  </form>
+</AuthLayout>

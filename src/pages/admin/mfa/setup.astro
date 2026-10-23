@@ -1,0 +1,73 @@
+---
+import { at } from '../../../admin/strings';
+import AuthLayout from '../../../layouts/AuthLayout.astro';
+import { adminLang, field } from '../../../lib/server/admin';
+import { logAuthEvent } from '../../../lib/server/auth-log';
+import { allow } from '../../../lib/server/rate-limit';
+
+const lang = adminLang(Astro.cookies);
+const supabase = Astro.locals.supabase!;
+const user = Astro.locals.user!;
+let message: string | null = null;
+let factorId = '';
+let qr = '';
+let secret = '';
+
+const { data: factors } = await supabase.auth.mfa.listFactors();
+if ((factors?.totp ?? []).some((f) => f.status === 'verified')) {
+  return Astro.redirect('/admin/mfa/verify/', 303);
+}
+
+if (Astro.request.method === 'POST') {
+  const form = await Astro.request.formData();
+  factorId = field(form, 'factorId', 100);
+  const code = field(form, 'code', 10).replace(/\s/g, '');
+  if (!(await allow('mfa', user.id, 10, 900))) {
+    message = at(lang, 'mfa.limited');
+  } else {
+    const { error } = await supabase.auth.mfa.challengeAndVerify({ factorId, code });
+    if (!error) {
+      await logAuthEvent(user.id, 'auth.mfa_enrolled', {});
+      return Astro.redirect('/admin/', 303);
+    }
+    message = at(lang, 'mfa.invalid');
+  }
+  Astro.response.status = 400;
+} else {
+  // Start a fresh enrolment; abandoned unverified factors are removed first.
+  for (const f of factors?.all ?? []) {
+    if (f.status === 'unverified') await supabase.auth.mfa.unenroll({ factorId: f.id });
+  }
+  const { data, error } = await supabase.auth.mfa.enroll({ factorType: 'totp', friendlyName: `Lahza ${Date.now()}` });
+  if (error || !data) {
+    message = at(lang, 'flash.failed');
+  } else {
+    factorId = data.id;
+    qr = data.totp.qr_code;
+    secret = data.totp.secret;
+  }
+}
+---
+<AuthLayout title={at(lang, 'mfa.setupTitle')}>
+  <h1>{at(lang, 'mfa.setupTitle')}</h1>
+  {message && <p class="flash flash--error" role="alert">{message}</p>}
+  {qr && (
+    <>
+      <p>{at(lang, 'mfa.setupIntro')}</p>
+      <img class="qr" src={qr} alt="QR" width="200" height="200" />
+      <p class="hint">{at(lang, 'mfa.secret')}</p>
+      <p class="code" data-mfa-secret>{secret}</p>
+    </>
+  )}
+  {factorId && (
+    <form class="admin-form" method="post">
+      <input type="hidden" name="factorId" value={factorId} />
+      <div class="field">
+        <label for="code">{at(lang, 'mfa.code')}</label>
+        <input id="code" name="code" inputmode="numeric" autocomplete="one-time-code" pattern="[0-9 ]{6,7}" required maxlength="7" dir="ltr" />
+      </div>
+      <button class="btn btn--primary" type="submit">{at(lang, 'mfa.verify')}</button>
+    </form>
+  )}
+  {!qr && <p><a href="/admin/mfa/setup/">{at(lang, 'mfa.restart')}</a></p>}
+</AuthLayout>

@@ -1,0 +1,352 @@
+---
+import { at, type AdminKey } from '../../../../admin/strings';
+import type { Lang } from '../../../../content/types';
+import { paths } from '../../../../i18n/routes';
+import AdminLayout from '../../../../layouts/AdminLayout.astro';
+import { can } from '../../../../lib/server/access';
+import { adminLang, utcToCairoLocal, withFlash } from '../../../../lib/server/admin';
+import {
+  ARTICLE_COLUMNS,
+  deleteArticle,
+  INTENTS,
+  readArticleForm,
+  restoreRevision,
+  saveArticle,
+  type AdminArticle,
+  type Intent,
+} from '../../../../lib/server/articles-admin';
+import { loadLibrary } from '../../../../lib/server/media-library';
+import { referencedMedia } from '../../../../lib/server/media';
+import { formatDateTime } from '../../../../lib/format';
+
+const lang = adminLang(Astro.cookies);
+const a = (key: AdminKey) => at(lang, key);
+const db = Astro.locals.supabase!;
+const access = Astro.locals.access!;
+const idParam = Astro.params.id!;
+const isNew = idParam === 'new';
+
+if (isNew && !can(access, 'article.create')) return Astro.redirect(withFlash('/admin/articles/', 'error', 'forbidden'), 303);
+
+let article: AdminArticle | null = null;
+if (!isNew) {
+  const { data } = await db.from('articles').select(ARTICLE_COLUMNS).eq('id', idParam).maybeSingle();
+  if (!data) return Astro.redirect(withFlash('/admin/articles/', 'error', 'notFound'), 303);
+  article = data as AdminArticle;
+}
+
+let formError: string | null = null;
+let posted: ReturnType<typeof readArticleForm>['raw'] | null = null;
+let postedPublishAt = '';
+
+if (Astro.request.method === 'POST') {
+  const form = await Astro.request.formData();
+  const intent = String(form.get('intent') ?? 'save');
+  const revisionId = Number(form.get('revision_id') ?? 0);
+
+  if (intent === 'revision' && article && revisionId > 0) {
+    const result = await restoreRevision(db, article, revisionId);
+    return Astro.redirect(withFlash(`/admin/articles/${article.id}/`, result.ok ? 'ok' : 'error', result.ok ? result.flash : result.error), 303);
+  }
+  if (intent === 'delete' && article) {
+    if (String(form.get('confirm') ?? '') !== 'DELETE') {
+      return Astro.redirect(withFlash(`/admin/articles/${article.id}/`, 'error', 'confirmDelete'), 303);
+    }
+    const result = await deleteArticle(db, article);
+    return Astro.redirect(result.ok ? withFlash('/admin/articles/', 'ok', 'deleted') : withFlash(`/admin/articles/${article.id}/`, 'error', result.error), 303);
+  }
+  if (!(INTENTS as readonly string[]).includes(intent)) return Astro.redirect(Astro.url.pathname, 303);
+
+  const { raw, parsed } = readArticleForm(form);
+  postedPublishAt = String(form.get('publish_at') ?? '');
+  if (!parsed.success) {
+    formError = 'invalid';
+    posted = raw;
+  } else {
+    const result = await saveArticle(db, article, parsed.data, intent as Intent, postedPublishAt);
+    if (result.ok) return Astro.redirect(withFlash(`/admin/articles/${result.id}/`, 'ok', result.flash), 303);
+    formError = result.error;
+    posted = raw;
+  }
+  Astro.response.status = 400;
+}
+
+const { data: categoryRows } = await db.from('categories').select('id, name_ar, name_en, visible').order('sort_order');
+const categories = (categoryRows ?? []) as { id: string; name_ar: string; name_en: string; visible: boolean }[];
+
+const values = {
+  lang: (posted?.lang as Lang | undefined) ?? article?.lang ?? (lang as Lang),
+  title: posted?.title ?? article?.title ?? '',
+  subtitle: posted?.subtitle ?? article?.subtitle ?? '',
+  summary: posted?.summary ?? article?.summary ?? '',
+  slug: posted?.slug ?? article?.slug ?? '',
+  category_id: posted?.category_id ?? article?.category_id ?? categories[0]?.id ?? '',
+  byline: posted?.byline ?? article?.byline ?? access.displayName,
+  tags: (posted?.tags ?? article?.tags ?? []).join('، '),
+  cover_media_id: posted?.cover_media_id ?? article?.cover_media_id ?? '',
+  body: JSON.stringify(posted?.body ?? article?.body ?? []),
+  seo_title: posted?.seo_title ?? article?.seo_title ?? '',
+  seo_description: posted?.seo_description ?? article?.seo_description ?? '',
+  publish_at: postedPublishAt || utcToCairoLocal(article?.publish_at),
+};
+
+const articleLang = values.lang;
+const otherLang: Lang = articleLang === 'ar' ? 'en' : 'ar';
+const { data: candidates } = await db
+  .from('articles')
+  .select('id, title, translation_group')
+  .eq('lang', otherLang)
+  .order('updated_at', { ascending: false })
+  .limit(100);
+const currentTranslation = article?.translation_group
+  ? (candidates ?? []).find((c) => c.translation_group === article!.translation_group)?.id ?? ''
+  : '';
+const translationValue = posted?.translation_of ?? currentTranslation;
+
+// Images already used by this article plus the newest items in the library.
+const usedIds = article ? referencedMedia(article) : [];
+const [library, used] = await Promise.all([loadLibrary(db, { limit: 60 }), loadLibrary(db, { ids: usedIds })]);
+const media = [...used, ...library.filter((m) => !usedIds.includes(m.id))];
+
+const { data: revisions } = article
+  ? await db.from('article_revisions').select('id, status, created_at, snapshot').eq('article_id', article.id).order('created_at', { ascending: false }).limit(15)
+  : { data: [] };
+
+const status = article?.status ?? 'draft';
+const live = status === 'published' && !!article?.publish_at && Date.parse(article.publish_at) <= Date.now();
+const scheduled = status === 'published' && !live;
+const canPublish = can(access, 'article.publish');
+const canEditAny = can(access, 'article.edit_any');
+const own = !article || (article.author_id === access.userId && can(access, 'article.edit_own'));
+const editable = isNew || canPublish || (canEditAny && status !== 'published') || (own && ['draft', 'in_review'].includes(status));
+
+const actions: { intent: Intent; key: AdminKey; style?: string; show: boolean }[] = [
+  { intent: 'save', key: 'action.save', style: 'btn--primary', show: editable },
+  { intent: 'submit', key: 'action.submit', show: status === 'draft' && (canPublish || canEditAny || (own && can(access, 'article.submit'))) },
+  { intent: 'return', key: 'action.return', show: (status === 'in_review' && (canPublish || canEditAny || own)) || (status === 'approved' && (canPublish || canEditAny)) },
+  { intent: 'approve', key: 'action.approve', show: canPublish && (status === 'draft' || status === 'in_review') },
+  { intent: 'publish', key: 'action.publish', style: 'btn--success', show: canPublish && status !== 'archived' && !live },
+  { intent: 'schedule', key: 'action.schedule', show: canPublish && status !== 'archived' && !live },
+  { intent: 'unpublish', key: 'action.unpublish', show: canPublish && status === 'published' },
+  { intent: 'archive', key: 'action.archive', show: !isNew && canPublish && status !== 'archived' },
+  { intent: 'restore', key: 'action.restore', show: canPublish && status === 'archived' },
+];
+const statusKey = (scheduled ? 'status.scheduled' : `status.${status}`) as AdminKey;
+const coverItem = media.find((m) => m.id === values.cover_media_id);
+const editorStrings = {
+  paragraph: a('editor.addParagraph'),
+  heading: a('editor.addHeading'),
+  quote: a('editor.addQuote'),
+  list: a('editor.addList'),
+  image: a('editor.addImage'),
+  listHint: a('editor.listHint'),
+  caption: a('editor.caption'),
+  source: a('editor.quoteSource'),
+  up: a('editor.moveUp'),
+  down: a('editor.moveDown'),
+  remove: a('editor.remove'),
+  choose: a('editor.chooseImage'),
+  unsaved: a('editor.unsaved'),
+  uploading: a('media.uploading'),
+  badImage: a('flash.badImage'),
+};
+---
+<AdminLayout title={isNew ? a('editor.new') : a('editor.edit')} section={isNew ? '/admin/articles/new/' : '/admin/articles/'}>
+  <h1>{isNew ? a('editor.new') : a('editor.edit')}</h1>
+  {formError && <p class="flash flash--error" role="alert">{at(lang, `flash.${formError}` as AdminKey) ?? a('flash.failed')}</p>}
+  {article && (
+    <div class="status-line">
+      <span class:list={['pill', `pill--${scheduled ? 'scheduled' : status}`]}>{a(statusKey)}</span>
+      {scheduled && article.publish_at && <span class="hint">{a('editor.scheduledFor')} {formatDateTime(article.publish_at, lang)}</span>}
+      <a class="btn btn--small" href={`/admin/articles/${article.id}/preview/`} target="_blank" rel="noopener">{a('editor.preview')}</a>
+      {live && <a class="btn btn--small" href={paths.article({ lang: article.lang, slug: article.slug })} target="_blank" rel="noopener">{a('editor.viewPublic')}</a>}
+    </div>
+  )}
+  <noscript><p class="flash flash--error">{a('editor.needsJs')}</p></noscript>
+
+  <form class="editor-layout" method="post" id="article-form" data-editor-strings={JSON.stringify(editorStrings)}>
+    <div class="admin-grid">
+      <section class="admin-card admin-form">
+        {isNew ? (
+          <div class="field">
+            <label for="lang">{a('editor.language')}</label>
+            <select id="lang" name="lang">
+              <option value="ar" selected={values.lang === 'ar'}>{a('lang.ar')}</option>
+              <option value="en" selected={values.lang === 'en'}>{a('lang.en')}</option>
+            </select>
+          </div>
+        ) : (
+          <input type="hidden" name="lang" value={values.lang} />
+        )}
+        <div class="field">
+          <label for="title">{a('editor.title')}</label>
+          <input id="title" name="title" required maxlength="200" value={values.title} dir="auto" disabled={!editable} />
+        </div>
+        <div class="field">
+          <label for="subtitle">{a('editor.subtitle')}</label>
+          <input id="subtitle" name="subtitle" maxlength="300" value={values.subtitle} dir="auto" disabled={!editable} />
+        </div>
+        <div class="field">
+          <label for="summary">{a('editor.summary')}</label>
+          <textarea id="summary" name="summary" maxlength="500" rows="3" dir="auto" disabled={!editable}>{values.summary}</textarea>
+        </div>
+      </section>
+
+      <section class="admin-card">
+        <h2>{a('editor.body')}</h2>
+        <textarea name="body" id="body-json" hidden>{values.body}</textarea>
+        <div class="blocks" data-blocks dir={values.lang === 'ar' ? 'rtl' : 'ltr'}></div>
+        {editable && (
+          <div class="add-blocks">
+            <button type="button" class="btn btn--small" data-add="paragraph">+ {a('editor.addParagraph')}</button>
+            <button type="button" class="btn btn--small" data-add="heading">+ {a('editor.addHeading')}</button>
+            <button type="button" class="btn btn--small" data-add="quote">+ {a('editor.addQuote')}</button>
+            <button type="button" class="btn btn--small" data-add="list">+ {a('editor.addList')}</button>
+            <button type="button" class="btn btn--small" data-add="image">+ {a('editor.addImage')}</button>
+          </div>
+        )}
+      </section>
+
+      <details class="admin-card admin-form">
+        <summary>{a('editor.seo')}</summary>
+        <div class="field">
+          <label for="seo_title">{a('editor.seoTitle')}</label>
+          <input id="seo_title" name="seo_title" maxlength="120" value={values.seo_title} dir="auto" disabled={!editable} />
+        </div>
+        <div class="field">
+          <label for="seo_description">{a('editor.seoDescription')}</label>
+          <textarea id="seo_description" name="seo_description" maxlength="300" rows="2" dir="auto" disabled={!editable}>{values.seo_description}</textarea>
+        </div>
+      </details>
+    </div>
+
+    <aside class="admin-grid">
+      <section class="admin-card admin-form">
+        <div class="admin-actions">
+          {actions.filter((x) => x.show).map((x) => (
+            <button class:list={['btn', x.style]} type="submit" name="intent" value={x.intent}>{a(x.key)}</button>
+          ))}
+        </div>
+        {canPublish && (
+          <div class="field">
+            <label for="publish_at">{a('editor.publishAt')}</label>
+            <input id="publish_at" name="publish_at" type="datetime-local" value={values.publish_at} dir="ltr" />
+            <span class="hint">{a('editor.publishAtHint')}</span>
+          </div>
+        )}
+      </section>
+
+      <section class="admin-card admin-form">
+        <div class="field">
+          <label for="category_id">{a('editor.category')}</label>
+          <select id="category_id" name="category_id" disabled={!editable}>
+            {categories.map((c) => <option value={c.id} selected={c.id === values.category_id}>{lang === 'ar' ? c.name_ar : c.name_en}</option>)}
+          </select>
+        </div>
+        <div class="field">
+          <label for="byline">{a('editor.byline')}</label>
+          <input id="byline" name="byline" required maxlength="120" value={values.byline} disabled={!editable} />
+        </div>
+        <div class="field">
+          <label for="slug">{a('editor.slug')}</label>
+          <input id="slug" name="slug" maxlength="100" value={values.slug} dir="ltr" pattern="[a-z0-9]+(-[a-z0-9]+)*" disabled={!editable} />
+          <span class="hint">{a('editor.slugHint')}</span>
+        </div>
+        <div class="field">
+          <label for="tags">{a('editor.tags')}</label>
+          <input id="tags" name="tags" maxlength="500" value={values.tags} dir="auto" disabled={!editable} />
+          <span class="hint">{a('editor.tagsHint')}</span>
+        </div>
+        <div class="field">
+          <label for="translation_of">{a('editor.translation')}</label>
+          <select id="translation_of" name="translation_of" disabled={!editable}>
+            <option value="">{a('editor.noTranslation')}</option>
+            {(candidates ?? []).map((c) => <option value={c.id} selected={c.id === translationValue}>{c.title}</option>)}
+          </select>
+        </div>
+      </section>
+
+      <section class="admin-card">
+        <h2>{a('editor.cover')}</h2>
+        <input type="hidden" name="cover_media_id" id="cover_media_id" value={values.cover_media_id} />
+        <div class="cover-preview" data-cover-preview>
+          {coverItem && <img src={coverItem.src} alt="" />}
+        </div>
+        {editable && (
+          <div class="admin-actions">
+            <button type="button" class="btn btn--small" data-pick-cover>{a('editor.chooseImage')}</button>
+            <button type="button" class="btn btn--small" data-clear-cover>{a('editor.removeImage')}</button>
+          </div>
+        )}
+      </section>
+    </aside>
+  </form>
+
+  {article && can(access, 'article.delete') && (status === 'draft' || status === 'archived') && (
+    <form class="admin-card admin-form" method="post">
+      <input type="hidden" name="intent" value="delete" />
+      <div class="field">
+        <label for="confirm-delete">{a('action.confirmDelete')}</label>
+        <input id="confirm-delete" name="confirm" autocomplete="off" dir="ltr" />
+      </div>
+      <button class="btn btn--danger" type="submit">{a('action.delete')}</button>
+    </form>
+  )}
+
+  {revisions && revisions.length > 0 && (
+    <details class="admin-card">
+      <summary>{a('editor.revisions')}</summary>
+      <div class="admin-table-wrap">
+        <table class="admin-table">
+          <tbody>
+            {revisions.map((r) => (
+              <tr>
+                <td>{formatDateTime(r.created_at, lang)}</td>
+                <td><span class="pill">{a(`status.${r.status}` as AdminKey)}</span></td>
+                <td>{(r.snapshot as { title?: string }).title}</td>
+                <td>
+                  {editable && (
+                    <form method="post">
+                      <input type="hidden" name="intent" value="revision" />
+                      <input type="hidden" name="revision_id" value={r.id} />
+                      <button class="btn btn--small" type="submit">{a('editor.restoreRevision')}</button>
+                    </form>
+                  )}
+                </td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
+    </details>
+  )}
+
+  <dialog class="media-dialog" data-media-dialog>
+    <div class="media-dialog__body">
+      <div class="admin-actions">
+        <strong>{a('media.title')}</strong>
+        <span class="admin-bar__spacer"></span>
+        <button type="button" class="btn btn--small" data-close-dialog>{a('media.close')}</button>
+      </div>
+      {can(access, 'media.upload') && (
+        <div class="admin-actions">
+          <label class="btn btn--small" for="dialog-upload">{a('media.upload')}</label>
+          <input id="dialog-upload" type="file" accept="image/jpeg,image/png,image/webp" hidden data-upload-input />
+          <span class="hint" data-upload-status></span>
+        </div>
+      )}
+      <div class="media-grid" data-media-grid>
+        {media.map((m) => (
+          <button type="button" class="media-tile" data-media-id={m.id} data-src={m.src} data-width={m.width} data-height={m.height}>
+            <img src={m.src} alt={lang === 'ar' ? m.alt_ar : m.alt_en} loading="lazy" />
+            <span>{(lang === 'ar' ? m.alt_ar : m.alt_en) || m.id.slice(0, 8)}</span>
+          </button>
+        ))}
+      </div>
+    </div>
+  </dialog>
+</AdminLayout>
+
+<script>
+  import '../../../../scripts/article-editor';
+</script>
