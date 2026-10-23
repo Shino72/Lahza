@@ -1,5 +1,6 @@
 import node from '@astrojs/node';
 import vercel from '@astrojs/vercel';
+import { fileURLToPath } from 'node:url';
 import { defineConfig, envField } from 'astro/config';
 
 const site = process.env.PUBLIC_SITE_URL ?? 'https://lahza-six.vercel.app';
@@ -40,6 +41,17 @@ export default defineConfig({
   vite: {
     build: {
       assetsInlineLimit: 0,
+    },
+    resolve: {
+      alias:
+        process.env.LAHZA_ADAPTER === 'node'
+          ? []
+          : [
+              // @astrojs/vercel 11.0.13 bundles its build helpers into the server entry,
+              // leaving an unused `import "rolldown"` whose native binary is not deployed,
+              // which crashes every function on start-up. Nothing at runtime uses it.
+              { find: /^rolldown$/, replacement: fileURLToPath(new URL('./src/lib/build/empty-module.js', import.meta.url)) },
+            ],
     },
   },
   devToolbar: {
