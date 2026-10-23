@@ -25,4 +25,11 @@ describe('deployment settings', () => {
     expect(env.supabaseUrl).toBeUndefined();
     expect(env.supabasePublishableKey).toBeUndefined();
   });
+
+  it('accepts the variable names set by the Vercel Supabase integration', () => {
+    const env = parse({ SUPABASE_URL: 'https://abc.supabase.co', SUPABASE_ANON_KEY: 'anon', SUPABASE_SERVICE_ROLE_KEY: 'service' });
+    expect(env.supabasePublishableKey).toBe('anon');
+    expect(env.supabaseSecretKey).toBe('service');
+    expect(parse({ SUPABASE_PUBLISHABLE_KEY: 'new', SUPABASE_ANON_KEY: 'old' }).supabasePublishableKey).toBe('new');
+  });
 });

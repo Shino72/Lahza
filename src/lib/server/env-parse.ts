@@ -42,8 +42,8 @@ export function parseServerEnv(raw: Raw, warn: (message: string) => void): Serve
 
   return {
     supabaseUrl,
-    supabasePublishableKey: clean(raw.SUPABASE_PUBLISHABLE_KEY),
-    supabaseSecretKey: clean(raw.SUPABASE_SECRET_KEY),
+    supabasePublishableKey: clean(raw.SUPABASE_PUBLISHABLE_KEY) ?? clean(raw.SUPABASE_ANON_KEY),
+    supabaseSecretKey: clean(raw.SUPABASE_SECRET_KEY) ?? clean(raw.SUPABASE_SERVICE_ROLE_KEY),
     ownerSetupToken: clean(raw.OWNER_SETUP_TOKEN),
     turnstileSiteKey: clean(raw.TURNSTILE_SITE_KEY),
     turnstileSecretKey: clean(raw.TURNSTILE_SECRET_KEY),

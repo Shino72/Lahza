@@ -27,6 +27,9 @@ export default defineConfig({
       SUPABASE_URL: envField.string({ context: 'server', access: 'secret', optional: true }),
       SUPABASE_PUBLISHABLE_KEY: envField.string({ context: 'server', access: 'secret', optional: true }),
       SUPABASE_SECRET_KEY: envField.string({ context: 'server', access: 'secret', optional: true }),
+      // Names used by the Vercel Supabase integration; read when the names above are not set.
+      SUPABASE_ANON_KEY: envField.string({ context: 'server', access: 'secret', optional: true }),
+      SUPABASE_SERVICE_ROLE_KEY: envField.string({ context: 'server', access: 'secret', optional: true }),
       OWNER_SETUP_TOKEN: envField.string({ context: 'server', access: 'secret', optional: true }),
       TURNSTILE_SITE_KEY: envField.string({ context: 'server', access: 'secret', optional: true }),
       TURNSTILE_SECRET_KEY: envField.string({ context: 'server', access: 'secret', optional: true }),

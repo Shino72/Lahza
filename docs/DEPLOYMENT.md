@@ -47,6 +47,8 @@ Project → **Settings → Environment Variables** (Production and Preview):
 | `TURNSTILE_SITE_KEY`, `TURNSTILE_SECRET_KEY` | Optional, from Cloudflare Turnstile |
 | `GOOGLE_LOGIN_ENABLED` | `true` only after step 4 |
 
+If Supabase was added through Vercel's Supabase integration, it sets `SUPABASE_URL`, `SUPABASE_ANON_KEY` and `SUPABASE_SERVICE_ROLE_KEY`; those names work too.
+
 Redeploy after changing variables. With `SUPABASE_*` set, the site serves database content and is indexable. Without them, preview deployments show labelled sample stories and production shows an empty site; both are `noindex`, so sample content can never be published as news.
 
 Vercel's Hobby plan is for non-commercial use. Move to a plan that permits commercial use before the site carries advertising.
