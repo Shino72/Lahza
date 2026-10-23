@@ -1,0 +1,22 @@
+---
+import { loadAccess } from '../../../lib/server/access';
+import { logAuthEvent } from '../../../lib/server/auth-log';
+import { serverEnv } from '../../../lib/server/env';
+
+// Google sign-in. Public sign-ups are disabled in Supabase, so only accounts that
+// already exist (invited staff) can complete it; the staff check below is a second gate.
+if (!serverEnv.googleLoginEnabled) return Astro.redirect('/admin/login/', 303);
+const code = Astro.url.searchParams.get('code');
+const supabase = Astro.locals.supabase!;
+if (!code) return Astro.redirect('/admin/login/?error=access', 303);
+const { data, error } = await supabase.auth.exchangeCodeForSession(code);
+if (error || !data.user) return Astro.redirect('/admin/login/?error=access', 303);
+const access = await loadAccess(supabase);
+if (!access || access.status !== 'active') {
+  await supabase.auth.signOut();
+  await logAuthEvent(data.user.id, 'auth.google_denied', {});
+  return Astro.redirect('/admin/login/?error=access', 303);
+}
+await logAuthEvent(data.user.id, 'auth.login_google', {});
+return Astro.redirect(access.mfaRequired ? '/admin/mfa/verify/' : '/admin/', 303);
+---

@@ -1,0 +1,51 @@
+---
+import '@fontsource/cairo/arabic-400.css';
+import '@fontsource/cairo/arabic-700.css';
+import '@fontsource/cairo/arabic-800.css';
+import '@fontsource/cairo/latin-400.css';
+import '@fontsource/cairo/latin-700.css';
+import '@fontsource/cairo/latin-800.css';
+import '../../../../styles/global.css';
+
+import { at } from '../../../../admin/strings';
+import ArticleView from '../../../../components/ArticleView.astro';
+import { dir } from '../../../../i18n/routes';
+import { adminLang } from '../../../../lib/server/admin';
+import { ARTICLE_COLUMNS } from '../../../../lib/server/articles-admin';
+import { loadLibrary } from '../../../../lib/server/media-library';
+import { referencedMedia } from '../../../../lib/server/media';
+import { toArticle, toCategory, type ArticleRow, type CategoryRow, type MediaRow } from '../../../../lib/server/supabase-repository';
+
+// Staff-only preview of any article state; row level security decides access.
+const db = Astro.locals.supabase!;
+const uiLang = adminLang(Astro.cookies);
+const { data } = await db.from('articles').select(ARTICLE_COLUMNS).eq('id', Astro.params.id!).maybeSingle();
+if (!data) return Astro.redirect('/admin/articles/?error=notFound', 303);
+const row = data as unknown as ArticleRow & { cover_media_id: string | null };
+
+const library = await loadLibrary(db, { ids: referencedMedia(row) });
+const media = new Map<string, MediaRow>(library.map((m) => [m.id, m]));
+const srcById = new Map(library.map((m) => [m.id, m.src]));
+const article = toArticle(row, media, (m) => srcById.get(m.id) ?? '');
+const { data: categoryRow } = await db
+  .from('categories')
+  .select('id, slug, name_ar, name_en, description_ar, description_en, sort_order, visible')
+  .eq('id', row.category_id)
+  .maybeSingle();
+const category = categoryRow ? toCategory(categoryRow as CategoryRow) : undefined;
+---
+<!doctype html>
+<html lang={article.lang} dir={dir(article.lang)}>
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <meta name="robots" content="noindex, nofollow" />
+    <title>{at(uiLang, 'editor.preview')}: {article.title}</title>
+  </head>
+  <body>
+    <div class="preview-banner" role="note">{at(uiLang, 'editor.preview')} · {at(uiLang, `status.${row.status}`)}</div>
+    <main class="container section">
+      <ArticleView article={article} category={category} url="" preview />
+    </main>
+  </body>
+</html>

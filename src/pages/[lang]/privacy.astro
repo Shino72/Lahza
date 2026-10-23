@@ -1,16 +1,16 @@
 ---
-import { siteSettings } from '../../config/site';
-import type { Lang } from '../../content/types';
+import { contactLinks } from '../../config/site';
 import { t } from '../../i18n/strings';
-import { languages, otherLang, paths } from '../../i18n/routes';
+import { isLang, otherLang, paths } from '../../i18n/routes';
 import BaseLayout from '../../layouts/BaseLayout.astro';
+import { getRepository } from '../../lib/server/content';
+import { turnstileEnabled } from '../../lib/server/env';
 
-export function getStaticPaths() {
-  return languages.map((lang) => ({ params: { lang } }));
-}
-
-const lang = Astro.params.lang as Lang;
-const { contact } = siteSettings;
+const lang = Astro.params.lang;
+if (!isLang(lang)) return new Response(null, { status: 404 });
+const settings = await getRepository().settings();
+const { contact } = settings;
+const links = contactLinks(contact);
 const updated = '2026-10-23';
 ---
 <BaseLayout lang={lang} title={t(lang, 'privacy.title')} description={t(lang, 'privacy.title')} path={paths.privacy(lang)} alternatePath={paths.privacy(otherLang(lang))}>
@@ -21,19 +21,21 @@ const updated = '2026-10-23';
         <p>آخر تحديث: <time datetime={updated}>٢٣ أكتوبر ٢٠٢٦</time></p>
         <h2>ما الذي نجمعه</h2>
         <ul>
-          <li>قراءة الموقع لا تتطلب تسجيلًا، ولا نستخدم ملفات تعريف الارتباط (cookies) أو أدوات تتبع أو تحليلات للزوار.</li>
+          <li>قراءة الموقع لا تتطلب تسجيلًا، ولا نستخدم ملفات تعريف الارتباط (cookies) أو أدوات تتبع أو تحليلات للزوار. لوحة التحرير الخاصة بفريق العمل وحدها تستخدم ملفات تعريف ارتباط ضرورية لتسجيل الدخول.</li>
           <li>الخطوط والملفات تُحمَّل من خوادم الموقع نفسه وليس من جهات خارجية.</li>
           <li>مزوّد الاستضافة يسجّل بيانات تقنية للطلبات مثل عنوان IP ونوع المتصفح لأغراض التشغيل والأمان.</li>
         </ul>
         <h2>طلبات الإعلان والتواصل</h2>
         <ul>
-          <li>عند تفعيل نموذج طلب الإعلان سنحفظ البيانات التي ترسلها (اسم الشركة، اسم المسؤول، البريد، الهاتف، نوع الإعلان والتفاصيل) لغرض الرد على طلبك فقط، ولن يطّلع عليها إلا الموظفون المخوّلون.</li>
+          <li>عند إرسال نموذج طلب الإعلان نحفظ البيانات التي ترسلها (اسم الشركة، اسم المسؤول، البريد، الهاتف، نوع الإعلان والتفاصيل) لغرض الرد على طلبك فقط، ولا يطّلع عليها إلا الموظفون المخوّلون. تُحفظ البيانات في قاعدة بيانات مستضافة لدى Supabase.</li>
+          <li>للحماية من الرسائل المزعجة نحسب بصمة مشفّرة مؤقتة من عنوان IP لتحديد عدد الطلبات، ولا نحفظ عنوان IP نفسه.</li>
+          {turnstileEnabled() && <li>يستخدم نموذج الإعلان خدمة Cloudflare Turnstile للتحقق من أن المرسل ليس برنامجًا آليًا، وتعالج Cloudflare بيانات تقنية من متصفحك لهذا الغرض.</li>}
           <li>إذا تواصلت معنا عبر واتساب أو الهاتف أو البريد الإلكتروني فإن هذه الخدمات تعالج بياناتك وفق سياساتها.</li>
         </ul>
         <h2>المشاركة على الشبكات الاجتماعية</h2>
         <p>أزرار المشاركة روابط عادية لا تُحمِّل أي أكواد من الشبكات الاجتماعية حتى تضغط عليها.</p>
         <h2>حقوقك والتواصل</h2>
-        <p>لطلب الاطلاع على بياناتك أو حذفها راسلنا على <a href={contact.emailHref} dir="ltr">{contact.email}</a>.</p>
+        <p>لطلب الاطلاع على بياناتك أو حذفها راسلنا على <a href={links.email} dir="ltr">{contact.email}</a>.</p>
         <p>سنحدّث هذه السياسة عند إضافة أي خدمة جديدة تجمع بيانات، مثل التحليلات، ولن نفعّلها قبل توضيح ذلك هنا.</p>
       </>
     ) : (
@@ -41,19 +43,21 @@ const updated = '2026-10-23';
         <p>Last updated: <time datetime={updated}>23 October 2026</time></p>
         <h2>What we collect</h2>
         <ul>
-          <li>Reading the site needs no account. We do not use cookies, tracking tools or visitor analytics.</li>
+          <li>Reading the site needs no account. We do not use cookies, tracking tools or visitor analytics. Only the staff dashboard uses cookies, which are needed to sign in.</li>
           <li>Fonts and files are served from our own servers, not third parties.</li>
           <li>Our hosting provider logs technical request data such as IP address and browser type for operations and security.</li>
         </ul>
         <h2>Advertising inquiries and contact</h2>
         <ul>
-          <li>When the advertising inquiry form is enabled, we will store the details you submit (company, contact person, email, phone, advertisement type and details) only to respond to you, and only authorised staff can see them.</li>
+          <li>When you send the advertising inquiry form, we store the details you submit (company, contact person, email, phone, advertisement type and details) only to respond to you, and only authorised staff can see them. The data is stored in a database hosted by Supabase.</li>
+          <li>To limit spam we derive a temporary one-way hash of your IP address to count requests; the IP address itself is not stored.</li>
+          {turnstileEnabled() && <li>The advertising form uses Cloudflare Turnstile to check that the sender is not automated; Cloudflare processes technical data from your browser for this purpose.</li>}
           <li>If you contact us by WhatsApp, phone or email, those services process your data under their own policies.</li>
         </ul>
         <h2>Social sharing</h2>
         <p>Share buttons are plain links and load no social network code until you click them.</p>
         <h2>Your rights and contact</h2>
-        <p>To access or delete your data, email <a href={contact.emailHref}>{contact.email}</a>.</p>
+        <p>To access or delete your data, email <a href={links.email}>{contact.email}</a>.</p>
         <p>We will update this policy before adding any new service that collects data, such as analytics.</p>
       </>
     )}

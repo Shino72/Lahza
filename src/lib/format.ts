@@ -1,11 +1,11 @@
-import { siteSettings } from '../config/site';
+import { displayTimeZone } from '../config/site';
 import type { Lang } from '../content/types';
 
 const locales: Record<Lang, string> = { ar: 'ar-EG', en: 'en-GB' };
 
 export function formatDateTime(iso: string, lang: Lang): string {
   return new Intl.DateTimeFormat(locales[lang], {
-    timeZone: siteSettings.timeZone,
+    timeZone: displayTimeZone,
     day: 'numeric',
     month: 'long',
     year: 'numeric',
@@ -16,7 +16,7 @@ export function formatDateTime(iso: string, lang: Lang): string {
 
 export function formatDate(iso: string, lang: Lang): string {
   return new Intl.DateTimeFormat(locales[lang], {
-    timeZone: siteSettings.timeZone,
+    timeZone: displayTimeZone,
     day: 'numeric',
     month: 'short',
   }).format(new Date(iso));

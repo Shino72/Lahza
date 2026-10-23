@@ -1,0 +1,11 @@
+---
+import { serverEnv } from '../../../lib/server/env';
+
+if (Astro.request.method !== 'POST' || !serverEnv.googleLoginEnabled) return Astro.redirect('/admin/login/', 303);
+const { data, error } = await Astro.locals.supabase!.auth.signInWithOAuth({
+  provider: 'google',
+  options: { redirectTo: new URL('/admin/auth/callback/', Astro.url).toString(), skipBrowserRedirect: true },
+});
+if (error || !data.url) return Astro.redirect('/admin/login/?error=access', 303);
+return Astro.redirect(data.url, 303);
+---

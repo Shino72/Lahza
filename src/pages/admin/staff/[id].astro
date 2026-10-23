@@ -1,0 +1,92 @@
+---
+import { at, type AdminKey } from '../../../admin/strings';
+import AdminLayout from '../../../layouts/AdminLayout.astro';
+import { can } from '../../../lib/server/access';
+import { adminLang, errorKey, field, withFlash } from '../../../lib/server/admin';
+import { setSignInBlocked } from '../../../lib/server/staff';
+
+const lang = adminLang(Astro.cookies);
+const a = (key: AdminKey) => at(lang, key);
+const db = Astro.locals.supabase!;
+const access = Astro.locals.access!;
+if (!can(access, 'staff.manage')) return Astro.redirect(withFlash('/admin/staff/', 'error', 'forbidden'), 303);
+const id = Astro.params.id!;
+const here = `/admin/staff/${id}/`;
+const roles = ['manager', 'editor', 'journalist'] as const;
+
+if (Astro.request.method === 'POST') {
+  const form = await Astro.request.formData();
+  const intent = field(form, 'intent', 20);
+  const back = (kind: 'ok' | 'error', key: string) => Astro.redirect(withFlash(here, kind, key), 303);
+  // Every change below is authorised by a database function acting as the signed-in user.
+  if (intent === 'role') {
+    const role = roles.find((r) => r === field(form, 'role', 20));
+    if (!role) return back('error', 'invalid');
+    const { error } = await db.rpc('staff_set_role', { target: id, new_role: role });
+    return error ? back('error', errorKey(error)) : back('ok', 'saved');
+  }
+  if (intent === 'permissions') {
+    const wanted = new Set(form.getAll('permissions').map(String));
+    const { data: current } = await db.from('staff_permissions').select('permission').eq('user_id', id);
+    const have = new Set((current ?? []).map((p) => p.permission as string));
+    for (const perm of new Set([...wanted, ...have])) {
+      if (wanted.has(perm) === have.has(perm) || !can(access, perm)) continue;
+      const { error } = await db.rpc('staff_set_permission', { target: id, perm, granted: wanted.has(perm) });
+      if (error) return back('error', errorKey(error));
+    }
+    return back('ok', 'saved');
+  }
+  if (intent === 'suspend' || intent === 'reactivate') {
+    const { error } = await db.rpc('staff_set_status', { target: id, new_status: intent === 'suspend' ? 'suspended' : 'active' });
+    if (error) return back('error', errorKey(error));
+    await setSignInBlocked(id, intent === 'suspend');
+    return back('ok', intent === 'suspend' ? 'suspended' : 'reactivated');
+  }
+  return back('error', 'invalid');
+}
+
+const { data: profile } = await db.from('staff_profiles').select('user_id, email, display_name, role, status').eq('user_id', id).maybeSingle();
+if (!profile) return Astro.redirect(withFlash('/admin/staff/', 'error', 'notFound'), 303);
+const [{ data: perms }, { data: catalog }, { data: rolePerms }] = await Promise.all([
+  db.from('staff_permissions').select('permission').eq('user_id', id),
+  db.from('permissions').select('key, description').order('key'),
+  db.from('role_permissions').select('permission').eq('role', profile.role),
+]);
+const extra = new Set((perms ?? []).map((p) => p.permission as string));
+const fromRole = new Set((rolePerms ?? []).map((p) => p.permission as string));
+const isOwner = profile.role === 'owner';
+---
+<AdminLayout title={profile.display_name} section="/admin/staff/">
+  <h1>{profile.display_name}</h1>
+  <p class="hint" dir="ltr">{profile.email}</p>
+  {isOwner || profile.user_id === access.userId ? (
+    <p class="flash flash--error">{a('staff.cannotEditOwner')}</p>
+  ) : (
+    <>
+      <form class="admin-card admin-form" method="post">
+        <h2>{a('staff.role')}</h2>
+        <input type="hidden" name="intent" value="role" />
+        <select name="role" aria-label={a('staff.role')}>
+          {roles.map((r) => <option value={r} selected={r === profile.role}>{a(`role.${r}`)}</option>)}
+        </select>
+        <div><button class="btn btn--primary" type="submit">{a('staff.saveRole')}</button></div>
+      </form>
+      <form class="admin-card admin-form" method="post">
+        <h2>{a('staff.permissions')}</h2>
+        <input type="hidden" name="intent" value="permissions" />
+        {(catalog ?? []).map((p) => (
+          <label class="check">
+            <input type="checkbox" name="permissions" value={p.key} checked={fromRole.has(p.key) || extra.has(p.key)} disabled={fromRole.has(p.key) || !can(access, p.key)} />
+            <span dir="ltr">{p.key}</span> <span class="hint">{p.description}</span>
+          </label>
+        ))}
+        <div><button class="btn btn--primary" type="submit">{a('staff.savePermissions')}</button></div>
+      </form>
+      <form class="admin-card" method="post">
+        <span class:list={['pill', `pill--${profile.status === 'active' ? 'published' : profile.status}`]}>{a(`staff.status.${profile.status}` as AdminKey)}</span>
+        {profile.status === 'active' && <button class="btn btn--danger" type="submit" name="intent" value="suspend">{a('staff.suspend')}</button>}
+        {profile.status === 'suspended' && <button class="btn" type="submit" name="intent" value="reactivate">{a('staff.reactivate')}</button>}
+      </form>
+    </>
+  )}
+</AdminLayout>

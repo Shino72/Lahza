@@ -65,11 +65,19 @@ const ar = {
   'ad.details': 'تفاصيل الحملة (اختياري)',
   'ad.submit': 'إرسال الطلب',
   'ad.privacy': 'نستخدم بيانات التواصل للرد على طلبك فقط. راجع سياسة الخصوصية.',
+  'ad.sent': 'تم استلام طلبك. سيتواصل معك فريق الإعلانات قريبًا.',
+  'ad.error.invalid': 'راجع الحقول المميزة وأكمل البيانات المطلوبة.',
+  'ad.error.rate_limited': 'تم إرسال طلبات كثيرة من هذا الاتصال. حاول مرة أخرى بعد ساعة أو تواصل معنا عبر واتساب.',
+  'ad.error.spam': 'تعذّر التحقق من الطلب. حاول مرة أخرى.',
+  'ad.error.failed': 'تعذّر حفظ الطلب الآن. حاول مرة أخرى أو تواصل معنا عبر واتساب.',
+  'ad.required': 'مطلوب',
   'about.title': 'من نحن',
   'about.body': 'لحظة موقع إخباري مصري باللغتين العربية والإنجليزية، يقدّم أخبار مصر والعالم العربي والعالم في السياسة والاقتصاد والرياضة والفن والتكنولوجيا وغيرها.',
   'privacy.title': 'سياسة الخصوصية',
   'notFound.title': 'الصفحة غير موجودة',
   'notFound.body': 'ربما تم نقل الصفحة أو حذفها. يمكنك العودة إلى الرئيسية أو البحث عن الخبر.',
+  'gone.title': 'تم حذف هذا الخبر',
+  'gone.body': 'هذا الخبر لم يعد متاحًا على موقع لحظة.',
 } as const;
 
 export type StringKey = keyof typeof ar;
@@ -139,11 +147,19 @@ const en: Record<StringKey, string> = {
   'ad.details': 'Campaign details (optional)',
   'ad.submit': 'Send inquiry',
   'ad.privacy': 'We use your contact details only to respond to your inquiry. See the privacy policy.',
+  'ad.sent': 'Your inquiry has been received. Our advertising team will contact you shortly.',
+  'ad.error.invalid': 'Please check the highlighted fields and complete the required details.',
+  'ad.error.rate_limited': 'Too many inquiries were sent from this connection. Try again in an hour or contact us on WhatsApp.',
+  'ad.error.spam': 'We could not verify the request. Please try again.',
+  'ad.error.failed': 'We could not save your inquiry right now. Please try again or contact us on WhatsApp.',
+  'ad.required': 'required',
   'about.title': 'About Lahza',
   'about.body': 'Lahza is an Egyptian news website in Arabic and English, covering Egypt, the Arab region and the world across politics, economy, sports, entertainment, technology and more.',
   'privacy.title': 'Privacy policy',
   'notFound.title': 'Page not found',
   'notFound.body': 'The page may have been moved or removed. Go back to the homepage or search for the story.',
+  'gone.title': 'This story has been removed',
+  'gone.body': 'This story is no longer available on Lahza.',
 };
 
 export const strings: Record<Lang, Record<StringKey, string>> = { ar, en };

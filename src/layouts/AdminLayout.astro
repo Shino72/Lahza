@@ -1,0 +1,96 @@
+---
+import '@fontsource/cairo/arabic-400.css';
+import '@fontsource/cairo/arabic-700.css';
+import '@fontsource/cairo/arabic-800.css';
+import '@fontsource/cairo/latin-400.css';
+import '@fontsource/cairo/latin-700.css';
+import '@fontsource/cairo/latin-800.css';
+import '../styles/global.css';
+import '../styles/admin.css';
+
+import { at, isAdminKey, type AdminKey } from '../admin/strings';
+import { dir } from '../i18n/routes';
+import { can } from '../lib/server/access';
+import { adminLang } from '../lib/server/admin';
+
+interface Props {
+  title: string;
+  /** Navigation item to highlight when it differs from the current path. */
+  section?: string;
+}
+const { title, section } = Astro.props;
+const lang = adminLang(Astro.cookies);
+const access = Astro.locals.access;
+const a = (key: AdminKey) => at(lang, key);
+
+const okKey = Astro.url.searchParams.get('ok');
+const errorKey = Astro.url.searchParams.get('error');
+const ok = okKey && isAdminKey(`flash.${okKey}`) ? at(lang, `flash.${okKey}` as AdminKey) : null;
+const error = errorKey && isAdminKey(`flash.${errorKey}`) ? at(lang, `flash.${errorKey}` as AdminKey) : null;
+
+const items: { href: string; key: AdminKey; show: boolean }[] = [
+  { href: '/admin/', key: 'nav.dashboard', show: true },
+  { href: '/admin/articles/', key: 'nav.articles', show: true },
+  { href: '/admin/articles/new/', key: 'nav.newArticle', show: can(access, 'article.create') },
+  { href: '/admin/media/', key: 'nav.media', show: can(access, 'media.upload') || can(access, 'media.manage') },
+  { href: '/admin/homepage/', key: 'nav.homepage', show: can(access, 'homepage.manage') },
+  { href: '/admin/categories/', key: 'nav.categories', show: can(access, 'category.manage') },
+  { href: '/admin/inquiries/', key: 'nav.inquiries', show: can(access, 'inquiry.read') },
+  { href: '/admin/settings/', key: 'nav.settings', show: can(access, 'settings.manage') },
+  { href: '/admin/staff/', key: 'nav.staff', show: can(access, 'staff.read') },
+  { href: '/admin/audit/', key: 'nav.audit', show: can(access, 'audit.read') },
+  { href: '/admin/account/', key: 'nav.account', show: true },
+];
+const path = section ?? Astro.url.pathname;
+const active = items
+  .filter((i) => (i.href === '/admin/' ? path === '/admin/' : path.startsWith(i.href)))
+  .sort((x, y) => y.href.length - x.href.length)[0]?.href;
+const current = (href: string) => (href === active ? 'page' : undefined);
+---
+<!doctype html>
+<html lang={lang} dir={dir(lang)}>
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <meta name="robots" content="noindex, nofollow" />
+    <title>{title} | {a('brand')}</title>
+    <link rel="icon" href="/favicon.svg" type="image/svg+xml" />
+  </head>
+  <body class="admin">
+    <header class="admin-bar">
+      <a class="admin-bar__brand" href="/admin/">{a('brand')}</a>
+      <span class="admin-bar__spacer"></span>
+      {access && <span class="admin-bar__user">{access.displayName} · {a(`role.${access.role}`)}</span>}
+      <a class="admin-link-button" href={`?ui=${lang === 'ar' ? 'en' : 'ar'}`} lang={lang === 'ar' ? 'en' : 'ar'}>{a('ui.switch')}</a>
+      <a class="admin-link-button" href="/ar/" target="_blank" rel="noopener">{a('nav.viewSite')}</a>
+      <form method="post" action="/admin/logout/">
+        <button class="admin-link-button" type="submit">{a('nav.logout')}</button>
+      </form>
+    </header>
+    <div class="admin-shell">
+      <details class="admin-nav" open={false}>
+        <summary>{a('nav.menu')}</summary>
+        <nav aria-label={a('nav.menu')}>
+          <ul>
+            {items.filter((i) => i.show).map((i) => (
+              <li><a href={i.href} aria-current={current(i.href)}>{a(i.key)}</a></li>
+            ))}
+          </ul>
+        </nav>
+      </details>
+      <main class="admin-main" id="main">
+        {ok && <p class="flash flash--ok" role="status">{ok}</p>}
+        {error && <p class="flash flash--error" role="alert">{error}</p>}
+        <slot />
+      </main>
+    </div>
+    <script>
+      // The menu is always expanded on wide screens.
+      const nav = document.querySelector<HTMLDetailsElement>('.admin-nav');
+      const wide = window.matchMedia('(min-width: 960px)');
+      const sync = () => { if (nav) nav.open = wide.matches; };
+      sync();
+      wide.addEventListener('change', sync);
+    </script>
+  </body>
+</html>

@@ -1,0 +1,100 @@
+---
+import { at, type AdminKey } from '../../../admin/strings';
+import AdminLayout from '../../../layouts/AdminLayout.astro';
+import { can } from '../../../lib/server/access';
+import { adminLang } from '../../../lib/server/admin';
+import { formatDateTime } from '../../../lib/format';
+
+const lang = adminLang(Astro.cookies);
+const a = (key: AdminKey) => at(lang, key);
+const db = Astro.locals.supabase!;
+const access = Astro.locals.access!;
+
+const PER_PAGE = 25;
+const statuses = ['draft', 'in_review', 'approved', 'published', 'archived'] as const;
+const params = Astro.url.searchParams;
+const status = statuses.find((s) => s === params.get('status'));
+const filterLang = params.get('lang') === 'ar' || params.get('lang') === 'en' ? params.get('lang')! : '';
+const q = (params.get('q') ?? '').trim().slice(0, 100);
+const page = Math.max(1, Number(params.get('page') ?? 1) || 1);
+
+let query = db
+  .from('articles')
+  .select('id, title, lang, status, publish_at, updated_at, byline, category_id', { count: 'exact' })
+  .order('updated_at', { ascending: false })
+  .range((page - 1) * PER_PAGE, page * PER_PAGE - 1);
+if (status) query = query.eq('status', status);
+if (filterLang) query = query.eq('lang', filterLang);
+if (q) query = query.ilike('title', `%${q.replace(/[%_\\]/g, (c) => `\\${c}`)}%`);
+const { data, count } = await query;
+const rows = data ?? [];
+const totalPages = Math.max(1, Math.ceil((count ?? 0) / PER_PAGE));
+const pageHref = (p: number) => {
+  const u = new URLSearchParams(params);
+  u.set('page', String(p));
+  return `?${u}`;
+};
+const pillFor = (r: { status: string; publish_at: string | null }) =>
+  r.status === 'published' && r.publish_at && Date.parse(r.publish_at) > Date.now() ? 'scheduled' : r.status;
+---
+<AdminLayout title={a('articles.title')}>
+  <div class="admin-actions">
+    <h1>{a('articles.title')}</h1>
+    <span class="admin-bar__spacer"></span>
+    {can(access, 'article.create') && <a class="btn btn--primary" href="/admin/articles/new/">{a('nav.newArticle')}</a>}
+  </div>
+  <form class="admin-card admin-form" method="get">
+    <div class="row row--3">
+      <div class="field">
+        <label for="f-status">{a('articles.filterStatus')}</label>
+        <select id="f-status" name="status">
+          <option value="">{a('articles.all')}</option>
+          {statuses.map((s) => <option value={s} selected={s === status}>{a(`status.${s}` as AdminKey)}</option>)}
+        </select>
+      </div>
+      <div class="field">
+        <label for="f-lang">{a('articles.filterLang')}</label>
+        <select id="f-lang" name="lang">
+          <option value="">{a('articles.all')}</option>
+          <option value="ar" selected={filterLang === 'ar'}>{a('lang.ar')}</option>
+          <option value="en" selected={filterLang === 'en'}>{a('lang.en')}</option>
+        </select>
+      </div>
+      <div class="field">
+        <label for="f-q">{a('articles.search')}</label>
+        <input id="f-q" name="q" value={q} maxlength="100" />
+      </div>
+    </div>
+    <div><button class="btn" type="submit">{a('articles.filter')}</button></div>
+  </form>
+  <section class="admin-card">
+    {rows.length === 0 ? (
+      <p class="hint">{a('articles.empty')}</p>
+    ) : (
+      <div class="admin-table-wrap">
+        <table class="admin-table">
+          <thead>
+            <tr><th>{a('editor.title')}</th><th>{a('editor.status')}</th><th>{a('common.lang')}</th><th>{a('articles.updated')}</th></tr>
+          </thead>
+          <tbody>
+            {rows.map((r) => (
+              <tr>
+                <td><a href={`/admin/articles/${r.id}/`} dir="auto"><strong>{r.title}</strong></a><br /><span class="hint">{r.byline}</span></td>
+                <td><span class:list={['pill', `pill--${pillFor(r)}`]}>{a(`status.${pillFor(r)}` as AdminKey)}</span></td>
+                <td>{a(`lang.${r.lang}` as AdminKey)}</td>
+                <td class="hint">{formatDateTime(r.updated_at, lang)}</td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
+    )}
+    {totalPages > 1 && (
+      <div class="admin-actions">
+        {page > 1 && <a class="btn btn--small" href={pageHref(page - 1)}>{a('common.prev')}</a>}
+        <span class="hint">{page} / {totalPages}</span>
+        {page < totalPages && <a class="btn btn--small" href={pageHref(page + 1)}>{a('common.next')}</a>}
+      </div>
+    )}
+  </section>
+</AdminLayout>

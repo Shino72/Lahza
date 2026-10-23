@@ -8,7 +8,9 @@ export type ArticleStatus = 'draft' | 'in_review' | 'approved' | 'published' | '
 export type ArticleBlock =
   | { type: 'paragraph'; text: string }
   | { type: 'heading'; text: string }
-  | { type: 'quote'; text: string; cite?: string };
+  | { type: 'quote'; text: string; cite?: string }
+  | { type: 'list'; items: string[] }
+  | { type: 'image'; mediaId: string; caption?: string; image?: ArticleImage };
 
 export interface ArticleImage {
   /** Absent until a photograph is uploaded through the CMS; a neutral placeholder is rendered instead. */
@@ -55,6 +57,25 @@ export interface Category {
 export interface HomepageSlot {
   articleId: string;
   position: number;
+}
+
+export interface ContactSettings {
+  phone: string;
+  phoneLabel: string;
+  whatsapp: string;
+  email: string;
+}
+
+export interface LeadershipEntry {
+  role: LocalizedText;
+  name: LocalizedText;
+}
+
+export interface SiteSettings {
+  contact: ContactSettings;
+  leadership: LeadershipEntry[];
+  advertiseIntro: LocalizedText;
+  tagline: LocalizedText;
 }
 
 export interface TickerItem {

@@ -11,12 +11,11 @@ import '../styles/global.css';
 
 import Footer from '../components/Footer.astro';
 import Header from '../components/Header.astro';
-import { siteSettings } from '../config/site';
-import { visibleCategories } from '../content/query';
-import { loadContent } from '../content/source';
+import { siteName as siteNames } from '../config/site';
 import type { Lang } from '../content/types';
 import { t } from '../i18n/strings';
 import { dir, otherLang } from '../i18n/routes';
+import { getRepository } from '../lib/server/content';
 import { absoluteUrl, jsonLdString } from '../lib/seo';
 
 interface Props {
@@ -28,19 +27,21 @@ interface Props {
   /** Path of the same page in the other language, when it exists. */
   alternatePath?: string;
   ogType?: 'website' | 'article';
+  /** Absolute URL of the page's share image; defaults to the Lahza card. */
+  ogImage?: string;
   jsonLd?: unknown;
   noindex?: boolean;
 }
 
-const { lang, title, description, path, alternatePath, ogType = 'website', jsonLd, noindex = false } = Astro.props;
-const content = loadContent();
-const categories = visibleCategories(content.categories);
-const isDemo = content.kind === 'demo';
+const { lang, title, description, path, alternatePath, ogType = 'website', ogImage, jsonLd, noindex = false } = Astro.props;
+const repo = getRepository();
+const [categories, settings] = await Promise.all([repo.categories(), repo.settings()]);
+const isDemo = repo.kind === 'demo';
 const site = Astro.site;
 const canonical = absoluteUrl(site, path);
-const siteName = siteSettings.name[lang];
-const fullTitle = title === siteName ? `${siteName} | ${siteSettings.tagline[lang]}` : `${title} | ${siteName}`;
-const ogImageUrl = absoluteUrl(site, '/og-default.png');
+const siteName = siteNames[lang];
+const fullTitle = title === siteName ? `${siteName} | ${settings.tagline[lang]}` : `${title} | ${siteName}`;
+const ogImageUrl = ogImage ?? absoluteUrl(site, '/og-default.png');
 // Preview fixtures must never be indexed.
 const robots = isDemo || noindex ? 'noindex, nofollow' : 'index, follow, max-image-preview:large';
 ---
@@ -67,8 +68,8 @@ const robots = isDemo || noindex ? 'noindex, nofollow' : 'index, follow, max-ima
     <meta property="og:url" content={canonical} />
     <meta property="og:locale" content={lang === 'ar' ? 'ar_EG' : 'en_GB'} />
     <meta property="og:image" content={ogImageUrl} />
-    <meta property="og:image:width" content="1200" />
-    <meta property="og:image:height" content="630" />
+    {!ogImage && <meta property="og:image:width" content="1200" />}
+    {!ogImage && <meta property="og:image:height" content="630" />}
     <meta name="twitter:card" content="summary_large_image" />
     <meta name="theme-color" content="#0f2a4a" />
     <link rel="icon" href="/favicon.svg" type="image/svg+xml" />
@@ -81,6 +82,6 @@ const robots = isDemo || noindex ? 'noindex, nofollow' : 'index, follow, max-ima
     <main id="main" class="container">
       <slot />
     </main>
-    <Footer lang={lang} categories={categories} />
+    <Footer lang={lang} categories={categories} settings={settings} />
   </body>
 </html>

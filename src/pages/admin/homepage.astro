@@ -1,0 +1,189 @@
+---
+import { at, type AdminKey } from '../../admin/strings';
+import AdminLayout from '../../layouts/AdminLayout.astro';
+import { can } from '../../lib/server/access';
+import { adminLang, cairoLocalToUtc, errorKey, field, withFlash } from '../../lib/server/admin';
+import { formatDateTime } from '../../lib/format';
+
+const lang = adminLang(Astro.cookies);
+const a = (key: AdminKey) => at(lang, key);
+const db = Astro.locals.supabase!;
+if (!can(Astro.locals.access, 'homepage.manage')) return Astro.redirect(withFlash('/admin/', 'error', 'forbidden'), 303);
+
+type Slot = { id: string; lang: 'ar' | 'en'; article_id: string; position: number };
+
+if (Astro.request.method === 'POST') {
+  const form = await Astro.request.formData();
+  const intent = field(form, 'intent', 30);
+  const back = (kind: 'ok' | 'error', key: string) => Astro.redirect(withFlash('/admin/homepage/', kind, key), 303);
+  const slotLang = field(form, 'lang', 2) === 'en' ? 'en' : 'ar';
+
+  const { data: current } = await db.from('homepage_slots').select('id, lang, article_id, position').eq('lang', slotLang).order('position');
+  const slots = (current ?? []) as Slot[];
+  // Rewrites positions in order; positions are unique per language, so clear them first.
+  const rewrite = async (ordered: string[]) => {
+    const del = await db.from('homepage_slots').delete().eq('lang', slotLang);
+    if (del.error) return del.error;
+    if (ordered.length === 0) return null;
+    const ins = await db.from('homepage_slots').insert(ordered.map((article_id, i) => ({ lang: slotLang, article_id, position: i + 1 })));
+    return ins.error;
+  };
+
+  if (intent === 'slot-add') {
+    const articleId = field(form, 'article_id', 64);
+    if (!articleId || slots.some((s) => s.article_id === articleId) || slots.length >= 20) return back('error', 'invalid');
+    const error = await rewrite([...slots.map((s) => s.article_id), articleId]);
+    return error ? back('error', errorKey(error)) : back('ok', 'saved');
+  }
+  if (intent === 'slot-up' || intent === 'slot-down' || intent === 'slot-remove') {
+    const ids = slots.map((s) => s.article_id);
+    const index = ids.indexOf(field(form, 'article_id', 64));
+    if (index < 0) return back('error', 'notFound');
+    if (intent === 'slot-remove') ids.splice(index, 1);
+    else {
+      const target = index + (intent === 'slot-up' ? -1 : 1);
+      if (target < 0 || target >= ids.length) return back('ok', 'saved');
+      [ids[index], ids[target]] = [ids[target]!, ids[index]!];
+    }
+    const error = await rewrite(ids);
+    return error ? back('error', errorKey(error)) : back('ok', 'saved');
+  }
+  if (intent === 'ticker-add') {
+    const text = field(form, 'text', 200);
+    const expiresLocal = field(form, 'expires_at', 20);
+    const expires = expiresLocal ? cairoLocalToUtc(expiresLocal) : null;
+    if (!text || (expiresLocal && !expires)) return back('error', 'invalid');
+    const { error } = await db.from('breaking_ticker').insert({
+      lang: slotLang,
+      text,
+      article_id: field(form, 'article_id', 64) || null,
+      expires_at: expires,
+      sort_order: Math.trunc(Number(form.get('sort_order') ?? 0)) || 0,
+    });
+    return error ? back('error', errorKey(error)) : back('ok', 'created');
+  }
+  if (intent === 'ticker-toggle' || intent === 'ticker-delete') {
+    const id = field(form, 'id', 64);
+    const { error } =
+      intent === 'ticker-delete'
+        ? await db.from('breaking_ticker').delete().eq('id', id)
+        : await db.from('breaking_ticker').update({ active: form.get('active') === 'true' }).eq('id', id);
+    return error ? back('error', errorKey(error)) : back('ok', intent === 'ticker-delete' ? 'deleted' : 'saved');
+  }
+  return back('error', 'invalid');
+}
+
+const nowIso = new Date().toISOString();
+const [slotsRes, tickerRes, publishedRes] = await Promise.all([
+  db.from('homepage_slots').select('id, lang, article_id, position').order('position'),
+  db.from('breaking_ticker').select('id, lang, text, article_id, active, expires_at, sort_order').order('lang').order('sort_order'),
+  db.from('articles').select('id, title, lang').eq('status', 'published').lte('publish_at', nowIso).order('publish_at', { ascending: false }).limit(100),
+]);
+const published = publishedRes.data ?? [];
+const titleOf = new Map(published.map((p) => [p.id, p.title]));
+const slots = (slotsRes.data ?? []) as Slot[];
+const ticker = tickerRes.data ?? [];
+---
+<AdminLayout title={a('home.title')}>
+  <h1>{a('home.title')}</h1>
+  {(['ar', 'en'] as const).map((l) => {
+    const list = slots.filter((s) => s.lang === l);
+    const available = published.filter((p) => p.lang === l && !list.some((s) => s.article_id === p.id));
+    return (
+      <section class="admin-card">
+        <h2>{a('home.featured')} · {a(`lang.${l}`)}</h2>
+        <p class="hint">{a('home.featuredHint')}</p>
+        {list.length === 0 ? <p class="hint">{a('home.empty')}</p> : (
+          <ol class="admin-grid">
+            {list.map((s, i) => (
+              <li class="admin-actions">
+                <span dir="auto">{i + 1}. {titleOf.get(s.article_id) ?? s.article_id}</span>
+                <span class="admin-bar__spacer"></span>
+                {(['slot-up', 'slot-down', 'slot-remove'] as const).map((intent) => (
+                  <form method="post">
+                    <input type="hidden" name="lang" value={l} />
+                    <input type="hidden" name="article_id" value={s.article_id} />
+                    <button class:list={['btn btn--small', intent === 'slot-remove' && 'btn--danger']} type="submit" name="intent" value={intent}>
+                      {intent === 'slot-up' ? a('editor.moveUp') : intent === 'slot-down' ? a('editor.moveDown') : a('editor.remove')}
+                    </button>
+                  </form>
+                ))}
+              </li>
+            ))}
+          </ol>
+        )}
+        {available.length > 0 && (
+          <form class="admin-actions" method="post">
+            <input type="hidden" name="intent" value="slot-add" />
+            <input type="hidden" name="lang" value={l} />
+            <label class="sr-only" for={`add-${l}`}>{a('home.addFeatured')}</label>
+            <select id={`add-${l}`} name="article_id">
+              {available.map((p) => <option value={p.id}>{p.title}</option>)}
+            </select>
+            <button class="btn btn--small btn--primary" type="submit">{a('home.addFeatured')}</button>
+          </form>
+        )}
+      </section>
+    );
+  })}
+
+  <section class="admin-card">
+    <h2>{a('home.ticker')}</h2>
+    {ticker.length === 0 ? <p class="hint">{a('home.empty')}</p> : (
+      <div class="admin-table-wrap">
+        <table class="admin-table">
+          <tbody>
+            {ticker.map((item) => (
+              <tr>
+                <td>{a(`lang.${item.lang}` as AdminKey)}</td>
+                <td dir="auto">{item.text}{item.article_id && <><br /><span class="hint">↳ {titleOf.get(item.article_id) ?? ''}</span></>}</td>
+                <td>
+                  <span class:list={['pill', item.active ? 'pill--published' : '']}>{item.active ? a('home.active') : a('home.inactive')}</span>
+                  {item.expires_at && <><br /><span class="hint">{formatDateTime(item.expires_at, lang)}</span></>}
+                </td>
+                <td>
+                  <div class="admin-actions">
+                    <form method="post">
+                      <input type="hidden" name="id" value={item.id} />
+                      <input type="hidden" name="active" value={item.active ? 'false' : 'true'} />
+                      <button class="btn btn--small" type="submit" name="intent" value="ticker-toggle">{a('home.toggle')}</button>
+                    </form>
+                    <form method="post">
+                      <input type="hidden" name="id" value={item.id} />
+                      <button class="btn btn--small btn--danger" type="submit" name="intent" value="ticker-delete">{a('editor.remove')}</button>
+                    </form>
+                  </div>
+                </td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
+    )}
+    <form class="admin-form" method="post">
+      <input type="hidden" name="intent" value="ticker-add" />
+      <div class="row row--2">
+        <div class="field">
+          <label for="t-lang">{a('common.lang')}</label>
+          <select id="t-lang" name="lang"><option value="ar">{a('lang.ar')}</option><option value="en">{a('lang.en')}</option></select>
+        </div>
+        <div class="field">
+          <label for="t-text">{a('home.tickerText')}</label>
+          <input id="t-text" name="text" required maxlength="200" dir="auto" />
+        </div>
+        <div class="field">
+          <label for="t-article">{a('home.tickerLink')}</label>
+          <select id="t-article" name="article_id">
+            <option value="">{a('editor.noTranslation')}</option>
+            {published.map((p) => <option value={p.id}>{p.lang.toUpperCase()} · {p.title}</option>)}
+          </select>
+        </div>
+        <div class="field">
+          <label for="t-expires">{a('home.tickerExpires')}</label>
+          <input id="t-expires" name="expires_at" type="datetime-local" dir="ltr" />
+        </div>
+      </div>
+      <div><button class="btn btn--primary" type="submit">{a('action.add')}</button></div>
+    </form>
+  </section>
+</AdminLayout>

@@ -1,0 +1,65 @@
+---
+import { at, type AdminKey } from '../../../admin/strings';
+import { t } from '../../../i18n/strings';
+import AdminLayout from '../../../layouts/AdminLayout.astro';
+import { can } from '../../../lib/server/access';
+import { adminLang, errorKey, field, withFlash } from '../../../lib/server/admin';
+import { formatDateTime } from '../../../lib/format';
+
+const lang = adminLang(Astro.cookies);
+const a = (key: AdminKey) => at(lang, key);
+const db = Astro.locals.supabase!;
+const access = Astro.locals.access;
+if (!can(access, 'inquiry.read')) return Astro.redirect(withFlash('/admin/', 'error', 'forbidden'), 303);
+const id = Astro.params.id!;
+const statuses = ['new', 'in_progress', 'closed', 'spam'] as const;
+
+if (Astro.request.method === 'POST') {
+  const form = await Astro.request.formData();
+  if (field(form, 'intent', 10) === 'delete') {
+    const { data, error } = await db.from('ad_inquiries').delete().eq('id', id).select('id');
+    if (error || !data?.length) return Astro.redirect(withFlash(`/admin/inquiries/${id}/`, 'error', error ? errorKey(error) : 'forbidden'), 303);
+    return Astro.redirect(withFlash('/admin/inquiries/', 'ok', 'deleted'), 303);
+  }
+  const status = statuses.find((s) => s === field(form, 'status', 20));
+  if (!status) return Astro.redirect(withFlash(`/admin/inquiries/${id}/`, 'error', 'invalid'), 303);
+  const { data, error } = await db.from('ad_inquiries').update({ status, notes: field(form, 'notes', 2000) }).eq('id', id).select('id');
+  const ok = !error && !!data?.length;
+  return Astro.redirect(withFlash(`/admin/inquiries/${id}/`, ok ? 'ok' : 'error', ok ? 'saved' : error ? errorKey(error) : 'forbidden'), 303);
+}
+
+const { data: inquiry } = await db.from('ad_inquiries').select('*').eq('id', id).maybeSingle();
+if (!inquiry) return Astro.redirect(withFlash('/admin/inquiries/', 'error', 'notFound'), 303);
+const canManage = can(access, 'inquiry.manage');
+---
+<AdminLayout title={inquiry.company}>
+  <h1 dir="auto">{inquiry.company}</h1>
+  <section class="admin-card">
+    <dl class="leadership">
+      <div><dt>{a('inquiries.person')}</dt><dd dir="auto">{inquiry.contact_person}</dd></div>
+      <div><dt>{a('login.email')}</dt><dd dir="ltr"><a href={`mailto:${inquiry.email}`}>{inquiry.email}</a></dd></div>
+      <div><dt>{a('settings.phone')}</dt><dd dir="ltr"><a href={`tel:${inquiry.phone.replace(/[^0-9+]/g, '')}`}>{inquiry.phone}</a></dd></div>
+      <div><dt>{a('inquiries.type')}</dt><dd>{t(lang, `ad.type.${inquiry.ad_type as 'banner' | 'sponsored' | 'campaign' | 'other'}`)}</dd></div>
+      <div><dt>{a('inquiries.received')}</dt><dd>{formatDateTime(inquiry.created_at, lang)}</dd></div>
+    </dl>
+    {inquiry.details && <><h2>{a('inquiries.details')}</h2><p dir="auto" class="prose">{inquiry.details}</p></>}
+  </section>
+  {canManage && (
+    <form class="admin-card admin-form" method="post">
+      <div class="field">
+        <label for="status">{a('editor.status')}</label>
+        <select id="status" name="status">
+          {statuses.map((s) => <option value={s} selected={s === inquiry.status}>{a(`inquiries.status.${s}`)}</option>)}
+        </select>
+      </div>
+      <div class="field">
+        <label for="notes">{a('inquiries.notes')}</label>
+        <textarea id="notes" name="notes" rows="4" maxlength="2000" dir="auto">{inquiry.notes}</textarea>
+      </div>
+      <div class="admin-actions">
+        <button class="btn btn--primary" type="submit">{a('action.save')}</button>
+        <button class="btn btn--danger" type="submit" name="intent" value="delete">{a('action.delete')}</button>
+      </div>
+    </form>
+  )}
+</AdminLayout>

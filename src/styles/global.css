@@ -1169,3 +1169,45 @@ fieldset[disabled] .button {
   font-size: 1rem;
   font-weight: 700;
 }
+
+.article__body ul {
+  margin: 0;
+  padding-inline-start: 22px;
+  display: grid;
+  gap: 6px;
+}
+
+.article__inline-figure {
+  margin: 0;
+  display: grid;
+  gap: 6px;
+}
+
+.article__inline-figure img {
+  width: 100%;
+  height: auto;
+  border-radius: var(--radius-sm);
+}
+
+.article__inline-figure figcaption {
+  font-size: 0.85rem;
+  color: var(--muted);
+}
+
+.notice--success {
+  background: #ecfdf3;
+  border-color: #abefc6;
+  color: #05603a;
+}
+
+.notice--error {
+  background: #fef3f2;
+  border-color: #fecdca;
+  color: #912018;
+}
+
+.field--invalid input,
+.field--invalid select,
+.field--invalid textarea {
+  border-color: #d92d20;
+}

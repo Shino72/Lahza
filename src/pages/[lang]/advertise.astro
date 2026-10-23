@@ -1,24 +1,37 @@
 ---
 import Icon from '../../components/Icon.astro';
-import { siteSettings } from '../../config/site';
-import type { Lang } from '../../content/types';
-import { t } from '../../i18n/strings';
-import { languages, otherLang, paths } from '../../i18n/routes';
+import { contactLinks } from '../../config/site';
+import { t, type StringKey } from '../../i18n/strings';
+import { isLang, otherLang, paths } from '../../i18n/routes';
 import BaseLayout from '../../layouts/BaseLayout.astro';
 import { advertisementTypes } from '../../lib/inquiry';
+import { getRepository } from '../../lib/server/content';
+import { backendConfigured, serverEnv, turnstileEnabled } from '../../lib/server/env';
+import { submitInquiry, type InquiryResult } from '../../lib/server/inquiries';
 
-export function getStaticPaths() {
-  return languages.map((lang) => ({ params: { lang } }));
+const lang = Astro.params.lang;
+if (!isLang(lang)) return new Response(null, { status: 404 });
+
+const inquiriesEnabled = backendConfigured();
+let result: InquiryResult | undefined;
+if (Astro.request.method === 'POST') {
+  if (!inquiriesEnabled) return new Response(null, { status: 503 });
+  result = await submitInquiry(await Astro.request.formData(), lang, Astro.clientAddress);
+  if (result.ok) return Astro.redirect(`${paths.advertise(lang)}?sent=1#inquiry`, 303);
+  Astro.response.status = result.reason === 'rate_limited' ? 429 : 400;
 }
+const sent = Astro.url.searchParams.get('sent') === '1';
+const values = result && !result.ok ? result.values : {};
+const invalid = new Set(result && !result.ok && result.reason === 'invalid' ? result.fields : []);
+const errorKey = result && !result.ok ? (`ad.error.${result.reason}` as StringKey) : undefined;
 
-const lang = Astro.params.lang as Lang;
-const { contact } = siteSettings;
-// The form posts to the inquiry endpoint once secure storage is connected.
-const inquiriesEnabled = false;
+const settings = await getRepository().settings();
+const { contact } = settings;
+const links = contactLinks(contact);
 ---
-<BaseLayout lang={lang} title={t(lang, 'ad.title')} description={t(lang, 'ad.intro')} path={paths.advertise(lang)} alternatePath={paths.advertise(otherLang(lang))}>
+<BaseLayout lang={lang} title={t(lang, 'ad.title')} description={settings.advertiseIntro[lang]} path={paths.advertise(lang)} alternatePath={paths.advertise(otherLang(lang))}>
   <h1 class="page-title">{t(lang, 'ad.title')}</h1>
-  <p class="page-intro">{t(lang, 'ad.intro')}</p>
+  <p class="page-intro">{settings.advertiseIntro[lang]}</p>
 
   <div class="advertise-layout section">
     <section class="panel panel--padded contact-card" aria-labelledby="ad-contact">
@@ -26,53 +39,56 @@ const inquiriesEnabled = false;
       <p class="meta">{contact.phoneLabel}</p>
       <p class="contact-card__number">{contact.phone}</p>
       <div class="contact-card__actions">
-        <a class="button button--whatsapp" href={contact.whatsappHref} target="_blank" rel="noopener noreferrer"><Icon name="whatsapp" />{t(lang, 'ad.whatsapp')}</a>
-        <a class="button button--call" href={contact.telHref}><Icon name="phone" />{t(lang, 'ad.call')}</a>
-        <a class="button button--email" href={contact.emailHref}><Icon name="mail" />{t(lang, 'ad.email')}</a>
+        <a class="button button--whatsapp" href={links.whatsapp} target="_blank" rel="noopener noreferrer"><Icon name="whatsapp" />{t(lang, 'ad.whatsapp')}</a>
+        <a class="button button--call" href={links.tel}><Icon name="phone" />{t(lang, 'ad.call')}</a>
+        <a class="button button--email" href={links.email}><Icon name="mail" />{t(lang, 'ad.email')}</a>
       </div>
       <p class="meta"><span dir="ltr">{contact.email}</span></p>
     </section>
 
-    <section class="panel panel--padded" aria-labelledby="ad-form">
+    <section class="panel panel--padded" id="inquiry" aria-labelledby="ad-form">
       <h2 id="ad-form">{t(lang, 'ad.formTitle')}</h2>
       {!inquiriesEnabled && <p class="notice section" role="status">{t(lang, 'ad.formPending')}</p>}
-      <form class="form section" method="post" action="/api/inquiries" novalidate>
+      {sent && <p class="notice notice--success section" role="status">{t(lang, 'ad.sent')}</p>}
+      {errorKey && <p class="notice notice--error section" role="alert">{t(lang, errorKey)}</p>}
+      <form class="form section" method="post" action={`${paths.advertise(lang)}#inquiry`}>
         <fieldset disabled={!inquiriesEnabled} class="form">
-          <div class="field">
+          <div class:list={['field', { 'field--invalid': invalid.has('company') }]}>
             <label for="company">{t(lang, 'ad.company')}</label>
-            <input id="company" name="company" required maxlength="120" autocomplete="organization" />
+            <input id="company" name="company" required maxlength="120" autocomplete="organization" value={values.company} aria-invalid={invalid.has('company') ? 'true' : undefined} />
           </div>
-          <div class="field">
+          <div class:list={['field', { 'field--invalid': invalid.has('contactPerson') }]}>
             <label for="contactPerson">{t(lang, 'ad.person')}</label>
-            <input id="contactPerson" name="contactPerson" required maxlength="120" autocomplete="name" />
+            <input id="contactPerson" name="contactPerson" required maxlength="120" autocomplete="name" value={values.contactPerson} aria-invalid={invalid.has('contactPerson') ? 'true' : undefined} />
           </div>
-          <div class="field">
+          <div class:list={['field', { 'field--invalid': invalid.has('email') }]}>
             <label for="email">{t(lang, 'ad.emailField')}</label>
-            <input id="email" name="email" type="email" required maxlength="254" autocomplete="email" dir="ltr" />
+            <input id="email" name="email" type="email" required maxlength="254" autocomplete="email" dir="ltr" value={values.email} aria-invalid={invalid.has('email') ? 'true' : undefined} />
           </div>
-          <div class="field">
+          <div class:list={['field', { 'field--invalid': invalid.has('phone') }]}>
             <label for="phone">{t(lang, 'ad.phone')}</label>
-            <input id="phone" name="phone" type="tel" required maxlength="20" autocomplete="tel" dir="ltr" />
+            <input id="phone" name="phone" type="tel" required maxlength="20" autocomplete="tel" dir="ltr" value={values.phone} aria-invalid={invalid.has('phone') ? 'true' : undefined} />
           </div>
-          <div class="field">
+          <div class:list={['field', { 'field--invalid': invalid.has('adType') }]}>
             <label for="adType">{t(lang, 'ad.type')}</label>
             <select id="adType" name="adType" required>
-              {advertisementTypes.map((type) => <option value={type}>{t(lang, `ad.type.${type}`)}</option>)}
+              {advertisementTypes.map((type) => <option value={type} selected={values.adType === type}>{t(lang, `ad.type.${type}`)}</option>)}
             </select>
           </div>
-          <div class="field">
+          <div class:list={['field', { 'field--invalid': invalid.has('details') }]}>
             <label for="details">{t(lang, 'ad.details')}</label>
-            <textarea id="details" name="details" maxlength="2000"></textarea>
+            <textarea id="details" name="details" maxlength="2000">{values.details}</textarea>
           </div>
           <div class="honeypot" aria-hidden="true">
             <label for="website">Website</label>
             <input id="website" name="website" tabindex="-1" autocomplete="off" />
           </div>
-          <input type="hidden" name="lang" value={lang} />
+          {inquiriesEnabled && turnstileEnabled() && <div class="cf-turnstile" data-sitekey={serverEnv.turnstileSiteKey}></div>}
           <p class="meta"><a href={paths.privacy(lang)}>{t(lang, 'ad.privacy')}</a></p>
           <button class="button button--call" type="submit">{t(lang, 'ad.submit')}</button>
         </fieldset>
       </form>
     </section>
   </div>
+  {inquiriesEnabled && turnstileEnabled() && <script is:inline src="https://challenges.cloudflare.com/turnstile/v0/api.js" async defer></script>}
 </BaseLayout>

@@ -1,0 +1,81 @@
+---
+import { at, type AdminKey } from '../../admin/strings';
+import AdminLayout from '../../layouts/AdminLayout.astro';
+import { can } from '../../lib/server/access';
+import { adminLang, errorKey, field, SLUG_PATTERN, withFlash } from '../../lib/server/admin';
+
+const lang = adminLang(Astro.cookies);
+const a = (key: AdminKey) => at(lang, key);
+const db = Astro.locals.supabase!;
+if (!can(Astro.locals.access, 'category.manage')) return Astro.redirect(withFlash('/admin/', 'error', 'forbidden'), 303);
+
+if (Astro.request.method === 'POST') {
+  const form = await Astro.request.formData();
+  const intent = field(form, 'intent', 20);
+  const back = (kind: 'ok' | 'error', key: string) => Astro.redirect(withFlash('/admin/categories/', kind, key), 303);
+  const values = {
+    slug: field(form, 'slug', 60).toLowerCase(),
+    name_ar: field(form, 'name_ar', 60),
+    name_en: field(form, 'name_en', 60),
+    description_ar: field(form, 'description_ar', 300),
+    description_en: field(form, 'description_en', 300),
+    sort_order: Math.trunc(Number(form.get('sort_order') ?? 0)) || 0,
+    visible: form.get('visible') === 'on',
+  };
+  if (intent === 'delete') {
+    const { error } = await db.from('categories').delete().eq('id', field(form, 'id', 64));
+    return error ? back('error', errorKey(error)) : back('ok', 'deleted');
+  }
+  if (!SLUG_PATTERN.test(values.slug) || !values.name_ar || !values.name_en) return back('error', 'invalid');
+  const { error } =
+    intent === 'create'
+      ? await db.from('categories').insert(values)
+      : await db.from('categories').update(values).eq('id', field(form, 'id', 64));
+  return error ? back('error', errorKey(error)) : back('ok', intent === 'create' ? 'created' : 'saved');
+}
+
+const { data } = await db.from('categories').select('*').order('sort_order');
+const rows = data ?? [];
+---
+<AdminLayout title={a('categories.title')}>
+  <h1>{a('categories.title')}</h1>
+  {rows.map((c) => (
+    <form class="admin-card admin-form" method="post">
+      <input type="hidden" name="intent" value="update" />
+      <input type="hidden" name="id" value={c.id} />
+      <div class="row row--3">
+        <div class="field"><label>{a('categories.nameAr')}<input name="name_ar" value={c.name_ar} required maxlength="60" dir="rtl" /></label></div>
+        <div class="field"><label>{a('categories.nameEn')}<input name="name_en" value={c.name_en} required maxlength="60" dir="ltr" /></label></div>
+        <div class="field"><label>{a('categories.slug')}<input name="slug" value={c.slug} required maxlength="60" dir="ltr" pattern="[a-z0-9]+(-[a-z0-9]+)*" /></label></div>
+      </div>
+      <div class="row row--2">
+        <div class="field"><label>{a('categories.descAr')}<input name="description_ar" value={c.description_ar} maxlength="300" dir="rtl" /></label></div>
+        <div class="field"><label>{a('categories.descEn')}<input name="description_en" value={c.description_en} maxlength="300" dir="ltr" /></label></div>
+      </div>
+      <div class="admin-actions">
+        <label class="field">{a('categories.order')}<input name="sort_order" type="number" value={c.sort_order} min="0" max="999" /></label>
+        <label class="check"><input type="checkbox" name="visible" checked={c.visible} />{a('categories.visible')}</label>
+        <button class="btn btn--primary btn--small" type="submit">{a('action.save')}</button>
+        <button class="btn btn--danger btn--small" type="submit" name="intent" value="delete">{a('action.delete')}</button>
+      </div>
+    </form>
+  ))}
+  <form class="admin-card admin-form" method="post">
+    <h2>{a('categories.add')}</h2>
+    <input type="hidden" name="intent" value="create" />
+    <div class="row row--3">
+      <div class="field"><label>{a('categories.nameAr')}<input name="name_ar" required maxlength="60" dir="rtl" /></label></div>
+      <div class="field"><label>{a('categories.nameEn')}<input name="name_en" required maxlength="60" dir="ltr" /></label></div>
+      <div class="field"><label>{a('categories.slug')}<input name="slug" required maxlength="60" dir="ltr" pattern="[a-z0-9]+(-[a-z0-9]+)*" /></label></div>
+    </div>
+    <div class="row row--2">
+      <div class="field"><label>{a('categories.descAr')}<input name="description_ar" maxlength="300" dir="rtl" /></label></div>
+      <div class="field"><label>{a('categories.descEn')}<input name="description_en" maxlength="300" dir="ltr" /></label></div>
+    </div>
+    <div class="admin-actions">
+      <label class="field">{a('categories.order')}<input name="sort_order" type="number" value={rows.length + 1} min="0" max="999" /></label>
+      <label class="check"><input type="checkbox" name="visible" checked />{a('categories.visible')}</label>
+      <button class="btn btn--primary" type="submit">{a('action.add')}</button>
+    </div>
+  </form>
+</AdminLayout>

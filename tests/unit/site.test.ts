@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { siteSettings } from '../../src/config/site';
+import { contactLinks, defaultSettings } from '../../src/config/site';
 import { demoArticles } from '../../src/content/demo/articles';
 import { initialCategories } from '../../src/content/categories';
 import { strings } from '../../src/i18n/strings';
@@ -9,18 +9,21 @@ import { shareLinks } from '../../src/lib/share';
 
 describe('contact details', () => {
   it('uses the exact owner-supplied values', () => {
-    expect(siteSettings.contact).toEqual({
+    expect(defaultSettings.contact).toEqual({
       phone: '01101135785',
       phoneLabel: 'WhatsApp & Call',
-      telHref: 'tel:01101135785',
-      whatsappHref: 'https://wa.me/201101135785',
+      whatsapp: 'https://wa.me/201101135785',
       email: 'Seifkhaledamer6@gmail.com',
-      emailHref: 'mailto:Seifkhaledamer6@gmail.com',
+    });
+    expect(contactLinks(defaultSettings.contact)).toEqual({
+      tel: 'tel:01101135785',
+      whatsapp: 'https://wa.me/201101135785',
+      email: 'mailto:Seifkhaledamer6@gmail.com',
     });
   });
 
   it('lists the editorial leadership in both languages', () => {
-    expect(siteSettings.leadership.map((p) => [p.name.ar, p.name.en])).toEqual([
+    expect(defaultSettings.leadership.map((p) => [p.name.ar, p.name.en])).toEqual([
       ['سيف خالد عامر', 'Seif Khaled Amer'],
       ['ريم حرب', 'Reem Harb'],
     ]);

@@ -1,58 +1,48 @@
 # Lahza | لحظة
 
-Arabic-first, bilingual (Arabic/English) news website built with [Astro](https://astro.build) and TypeScript.
+Arabic-first, bilingual (Arabic/English) news site with a newsroom dashboard. Astro (server-rendered, TypeScript) on Vercel; Supabase for Postgres, authentication and image storage.
 
-## Status
+- Public site: `/ar/` (RTL, default) and `/en/` (LTR) — homepage, ten categories, articles, search, advertising page, about, privacy, sitemap.
+- Dashboard: `/admin/` — articles and editorial workflow, images, homepage order, breaking-news ticker, categories, site settings, advertising inquiries, staff and permissions, audit log.
 
-| Area | State |
-|---|---|
-| Public site: homepage, 10 categories, article pages, search, advertising page, about, privacy | Working, static build |
-| Arabic RTL / English LTR, language switch, `/ar/` and `/en/` URLs, linked translations | Working |
-| Canonical, `hreflang`, Open Graph, NewsArticle JSON-LD, `sitemap.xml`, `robots.txt` | Working |
-| Security headers and CSP (`vercel.json`) | Configured; verify on the deployed preview |
-| Content | Sample fixtures only (`LAHZA_CONTENT_SOURCE=demo`); the site is `noindex` while they are in use |
-| Database, staff login, roles, CMS, media uploads, inquiry storage | Not implemented yet (backend phase) |
-| Advertising inquiry form | Rendered disabled until inquiries can be stored securely |
+Setup and hosting: [docs/DEPLOYMENT.md](docs/DEPLOYMENT.md) · Security model: [docs/SECURITY.md](docs/SECURITY.md) · Publishing, backups, restore: [docs/OPERATIONS.md](docs/OPERATIONS.md)
 
-## Requirements
+## Local development
 
-- Node.js 22.12 or later
-- npm 10 or later
-
-## Commands
+Requirements: Node.js 22.12+, Docker (for the local Supabase stack).
 
 ```sh
-npm ci                # install exact locked dependencies
-npm run dev           # local dev server on http://localhost:4321
-npm run check         # Astro + TypeScript diagnostics
-npm test              # unit tests (Vitest)
-npm run build         # static build into dist/
-npm run test:e2e      # browser tests against the built site (Playwright)
+npm ci
+npx supabase@2.120.0 start          # local Postgres, Auth, Storage and a mail inbox (http://127.0.0.1:54324)
+npx supabase@2.120.0 status -o env  # copy API_URL / ANON_KEY / SERVICE_ROLE_KEY into .env (see .env.example)
+npm run dev                         # http://localhost:4321
 ```
 
-`npm run test:e2e` serves `dist/`, so run `npm run build` first. To use an already-installed Chromium instead of `npx playwright install chromium`, set `PLAYWRIGHT_CHROMIUM_EXECUTABLE` to its path.
+Without Supabase variables the site runs on labelled sample content (`src/content/demo/`), marked `noindex`.
 
-## Configuration
+Create a local Owner by setting `OWNER_SETUP_TOKEN` in `.env` and opening `/admin/setup/`; the invitation email arrives in the local inbox.
 
-Copy `.env.example` to `.env` for local overrides. Never commit `.env` files.
+## Checks
 
-| Variable | Purpose |
-|---|---|
-| `PUBLIC_SITE_URL` | Canonical origin for canonical links, `hreflang` and the sitemap |
-| `LAHZA_CONTENT_SOURCE` | `demo` serves labelled sample fixtures; any other value serves an empty site until the database source exists |
-
-## Project layout
-
-```
-src/config/site.ts        contact details, leadership, display time zone
-src/content/              content types, categories, visibility rules, sample fixtures
-src/i18n/                 UI strings (ar/en) and URL helpers
-src/lib/                  search normalisation, SEO, sharing, inquiry validation
-src/components/, layouts/ UI
-src/pages/[lang]/         public routes
-tests/unit, tests/e2e     Vitest and Playwright suites
+```sh
+npm run check              # Astro + TypeScript
+npm test                   # unit tests
+npm run test:integration   # database access control (needs the local stack and SUPABASE_* variables)
+LAHZA_ADAPTER=node npm run build && npx supabase@2.120.0 db reset && npm run test:e2e
 ```
 
-Content visibility is defined once in `src/content/query.ts`: an article is public only when `status = 'published'` and `publishAt <= now`. The database policies added in the backend phase must keep the same rule.
+The end-to-end suite runs the sample-content site on port 4322 and, when `SUPABASE_*` and `OWNER_SETUP_TOKEN` are set, the full newsroom workflow on port 4321 against a freshly reset database. Set `PLAYWRIGHT_CHROMIUM_EXECUTABLE` to use an installed Chromium.
 
-See [docs/DEPLOYMENT.md](docs/DEPLOYMENT.md) for deployment and rollback.
+## Layout
+
+```
+src/pages/[lang]/         public routes (server-rendered)
+src/pages/admin/          dashboard and sign-in flows
+src/middleware.ts         sessions, dashboard access gate, cache and security headers
+src/lib/server/           Supabase clients, content repository, media, rate limits
+src/content/              content types, visibility rules, sample fixtures
+supabase/migrations/      schema, RLS policies, workflow triggers, reference data
+supabase/templates/       invite and password-reset emails
+tests/{unit,integration,e2e}
+scripts/backup.sh, restore.sh
+```

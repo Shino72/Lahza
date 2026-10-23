@@ -11,6 +11,9 @@ permissions:
 jobs:
   test:
     runs-on: ubuntu-latest
+    env:
+      ASTRO_TELEMETRY_DISABLED: '1'
+      OWNER_SETUP_TOKEN: ci-only-setup-token-0123456789abcdef
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
@@ -21,6 +24,20 @@ jobs:
       - run: npm audit --audit-level=high --omit=dev
       - run: npm run check
       - run: npm test
-      - run: npm run build
+
+      - uses: supabase/setup-cli@v1
+        with:
+          version: 2.120.0
+      - name: Start local Supabase
+        run: |
+          supabase start -x realtime,studio,edge-runtime,logflare,vector,supavisor,imgproxy,postgres-meta
+          supabase status -o env --override-name api.url=SUPABASE_URL \
+            --override-name auth.anon_key=SUPABASE_PUBLISHABLE_KEY \
+            --override-name auth.service_role_key=SUPABASE_SECRET_KEY \
+            | grep -E '^SUPABASE_(URL|PUBLISHABLE_KEY|SECRET_KEY)=' | tr -d '"' >> "$GITHUB_ENV"
+      - run: npm run test:integration
+      - run: LAHZA_ADAPTER=node PUBLIC_SITE_URL=http://localhost:4321 npm run build
       - run: npx playwright install --with-deps chromium
+      - run: supabase db reset
       - run: npm run test:e2e
+      - run: npm run build

@@ -1,4 +1,4 @@
-import type { Article, Category, Lang } from '../content/types';
+import type { Article, ArticleBlock, Category, Lang } from '../content/types';
 
 const ARABIC_DIACRITICS = /[ؐ-ًؚ-ٰٟۖ-ۭ]/g;
 const TATWEEL = /ـ/g;
@@ -18,6 +18,17 @@ export function normalizeText(input: string): string {
     .toLowerCase()
     .replace(/[^\p{L}\p{N}]+/gu, ' ')
     .trim();
+}
+
+export function blockText(block: ArticleBlock): string {
+  switch (block.type) {
+    case 'list':
+      return block.items.join(' ');
+    case 'image':
+      return block.caption ?? '';
+    default:
+      return block.text;
+  }
 }
 
 export function searchTerms(query: string): string[] {
@@ -45,7 +56,7 @@ export function buildSearchIndex(
   const names = new Map(categories.map((c) => [c.id, c.name[lang]]));
   return articles.map((a) => {
     const category = names.get(a.categoryId) ?? '';
-    const body = a.body.map((block) => block.text).join(' ');
+    const body = a.body.map(blockText).join(' ');
     return {
       href: hrefFor(a),
       title: a.title,

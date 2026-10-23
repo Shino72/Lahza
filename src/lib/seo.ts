@@ -1,4 +1,4 @@
-import { siteSettings } from '../config/site';
+import { siteName } from '../config/site';
 import type { Article, Category } from '../content/types';
 
 export function absoluteUrl(site: URL | undefined, path: string): string {
@@ -32,7 +32,7 @@ export function newsArticleJsonLd(args: {
     author: [{ '@type': 'Person', name: article.author }],
     publisher: {
       '@type': 'NewsMediaOrganization',
-      name: siteSettings.name[article.lang],
+      name: siteName[article.lang],
       logo: { '@type': 'ImageObject', url: logoUrl },
     },
   };

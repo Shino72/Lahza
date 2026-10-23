@@ -1,17 +1,16 @@
 ---
 import Icon from '../../components/Icon.astro';
-import { siteSettings } from '../../config/site';
-import type { Lang } from '../../content/types';
+import { contactLinks } from '../../config/site';
 import { t } from '../../i18n/strings';
-import { languages, otherLang, paths } from '../../i18n/routes';
+import { isLang, otherLang, paths } from '../../i18n/routes';
 import BaseLayout from '../../layouts/BaseLayout.astro';
+import { getRepository } from '../../lib/server/content';
 
-export function getStaticPaths() {
-  return languages.map((lang) => ({ params: { lang } }));
-}
-
-const lang = Astro.params.lang as Lang;
-const { contact, leadership } = siteSettings;
+const lang = Astro.params.lang;
+if (!isLang(lang)) return new Response(null, { status: 404 });
+const settings = await getRepository().settings();
+const { contact, leadership } = settings;
+const links = contactLinks(contact);
 ---
 <BaseLayout lang={lang} title={t(lang, 'about.title')} description={t(lang, 'about.body')} path={paths.about(lang)} alternatePath={paths.about(otherLang(lang))}>
   <h1 class="page-title">{t(lang, 'about.title')}</h1>
@@ -25,9 +24,9 @@ const { contact, leadership } = siteSettings;
     </dl>
     <h2>{t(lang, 'footer.contact')}</h2>
     <div class="contact-card__actions">
-      <a class="button button--whatsapp" href={contact.whatsappHref} target="_blank" rel="noopener noreferrer"><Icon name="whatsapp" />{t(lang, 'ad.whatsapp')}</a>
-      <a class="button button--call" href={contact.telHref}><Icon name="phone" /><span dir="ltr">{contact.phone}</span></a>
-      <a class="button button--email" href={contact.emailHref}><Icon name="mail" />{t(lang, 'ad.email')}</a>
+      <a class="button button--whatsapp" href={links.whatsapp} target="_blank" rel="noopener noreferrer"><Icon name="whatsapp" />{t(lang, 'ad.whatsapp')}</a>
+      <a class="button button--call" href={links.tel}><Icon name="phone" /><span dir="ltr">{contact.phone}</span></a>
+      <a class="button button--email" href={links.email}><Icon name="mail" />{t(lang, 'ad.email')}</a>
     </div>
     <p><a class="kicker" href={paths.advertise(lang)}>{t(lang, 'nav.advertise')}</a></p>
   </div>

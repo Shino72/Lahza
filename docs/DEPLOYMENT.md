@@ -1,40 +1,76 @@
-# Deployment
+# Deployment and setup
 
-## Current setup
+Everything below is done in provider dashboards. Secrets go into those dashboards only — never into the repository, chat, or email.
 
-- Hosting: Vercel project connected to this GitHub repository. Pushes to `main` deploy to production; other branches get preview URLs.
-- Build: `npm ci` then `npm run build`; output directory `dist/` (see `vercel.json`).
-- `/` redirects to `/ar/` at the edge.
-- Security headers (CSP, HSTS, `nosniff`, `X-Frame-Options`, `Referrer-Policy`, `Permissions-Policy`) are set in `vercel.json`.
+## 1. Supabase project
 
-## Environment variables (Vercel → Project → Settings → Environment Variables)
+1. Create a project at <https://supabase.com/dashboard> (region close to Egypt, e.g. Frankfurt). Save the database password in a password manager.
+2. **Apply the schema.** In GitHub → repository **Settings → Secrets and variables → Actions**, add `SUPABASE_DB_URL` (Supabase → **Connect** → *Session pooler* connection string, with the password filled in). Then open **Actions → Database migrations → Run workflow**. Re-run it whenever new files appear in `supabase/migrations/`.
+   - Alternative from a computer: `npx supabase@2.120.0 db push --db-url "<connection string>"`.
+3. **Authentication → Sign In / Providers**
+   - *Allow new users to sign up*: **off**.
+   - *Email* provider: **on**, *Confirm email*: on, *Secure password change*: on.
+   - Minimum password length **12**, require lowercase, uppercase and digits.
+4. **Authentication → Multi-Factor**: TOTP (App Authenticator) **enabled**.
+5. **Authentication → URL Configuration**
+   - Site URL: the public site origin, e.g. `https://lahza-tau.vercel.app` (later the custom domain).
+   - Redirect URLs: `https://<site>/admin/auth/confirm/` and `https://<site>/admin/auth/callback/`.
+6. **Authentication → Emails → Templates**: replace the *Invite user* and *Reset password* templates with the contents of `supabase/templates/invite.html` and `supabase/templates/recovery.html`. The links in those templates are required for sign-in to work.
+7. **Authentication → Emails → SMTP Settings**: configure a real SMTP provider. Supabase's built-in sender is rate-limited and intended for testing only; invitations and password resets will not be reliable without it.
+8. **Access token (JWT) expiry** (Project Settings → JWT Keys, or Authentication → Sessions): set to 900 seconds (suspensions take effect in the database immediately; a shorter token shortens the remaining window at the auth layer).
 
-| Variable | Preview | Production |
-|---|---|---|
-| `PUBLIC_SITE_URL` | optional | the final domain, e.g. `https://www.example.com` |
-| `LAHZA_CONTENT_SOURCE` | `demo` | `demo` until the database is connected |
+## 2. Vercel
 
-While `LAHZA_CONTENT_SOURCE=demo`, every page is `noindex` and `robots.txt` disallows crawling, so sample stories cannot reach Google.
+Project → **Settings → Environment Variables** (Production and Preview):
 
-## Release
+| Variable | Value |
+|---|---|
+| `SUPABASE_URL` | Supabase → Project Settings → API → Project URL |
+| `SUPABASE_PUBLISHABLE_KEY` | Publishable key (or legacy `anon` key) |
+| `SUPABASE_SECRET_KEY` | Secret key (or legacy `service_role` key) — mark *Sensitive* |
+| `PUBLIC_SITE_URL` | The canonical origin, e.g. `https://lahza-tau.vercel.app` |
+| `OWNER_SETUP_TOKEN` | 32+ random characters (only until the Owner exists) — *Sensitive* |
+| `TURNSTILE_SITE_KEY`, `TURNSTILE_SECRET_KEY` | Optional, from Cloudflare Turnstile |
+| `GOOGLE_LOGIN_ENABLED` | `true` only after step 4 |
 
-1. Work on a branch; Vercel builds a preview for each push.
-2. Check the preview: homepage, a category, an article, search, advertising page, `/sitemap.xml`, `/robots.txt`, and response headers.
-3. Merge to `main` only after approval.
+Redeploy after changing variables. With `SUPABASE_*` set, the site serves database content; without them it serves labelled sample content and is `noindex`.
 
-## Rollback
+Vercel's Hobby plan is for non-commercial use. Move to a plan that permits commercial use before the site carries advertising.
 
-In Vercel → Deployments, choose the last good production deployment and select **Promote to Production** (instant rollback). Then revert the offending commit on `main`.
+## 3. First Owner account
 
-## Hosting plan
+1. Open `https://<site>/admin/setup/`.
+2. Enter the `OWNER_SETUP_TOKEN` value, your name and your own email address.
+3. Open the invitation email, press **Continue**, choose a password, then scan the QR code with an authenticator app and enter the 6-digit code.
+4. Delete `OWNER_SETUP_TOKEN` from Vercel and redeploy. The setup page refuses to run once an Owner exists, and the database allows only one Owner.
 
-Vercel's Hobby plan is limited to non-commercial personal use. A news site that sells advertising needs a plan that permits commercial use before launch; confirm current terms at https://vercel.com/docs/plans/hobby.
+Staff are then invited from **Dashboard → Staff**. There is no public registration.
 
-## Custom domain and Search Console (after approval)
+## 4. Google sign-in (optional, invited staff only)
 
-1. Buy the domain (owner action).
-2. Vercel → Project → Settings → Domains: add the apex and `www`; choose one as canonical and redirect the other.
-3. Create the DNS records Vercel shows at the registrar. Vercel issues the HTTPS certificate automatically.
-4. Set `PUBLIC_SITE_URL` to the canonical origin and redeploy.
-5. Google Search Console: add a **Domain** property, add the TXT record it gives you at the registrar, verify, then submit `https://<domain>/sitemap.xml`.
-6. Monitor Pages and Sitemaps reports. Indexing and ranking are controlled by Google and take time.
+1. Google Cloud Console → APIs & Services → **OAuth consent screen** (External, app name "Lahza").
+2. **Credentials → Create OAuth client ID** (Web application). Authorized redirect URI: `https://<project-ref>.supabase.co/auth/v1/callback`.
+3. Supabase → Authentication → Providers → **Google**: enable and paste the client ID and secret there.
+4. Set `GOOGLE_LOGIN_ENABLED=true` in Vercel and redeploy.
+
+Because sign-ups are disabled, Google sign-in only works for an email that was already invited; the dashboard additionally rejects any account without an active staff profile. Google sign-in has not been tested end to end in this repository's test suite (it needs real Google credentials) — test it with a staff account before relying on it.
+
+## 5. Backups
+
+Add the GitHub Actions secrets `SUPABASE_URL`, `SUPABASE_SECRET_KEY`, `BACKUP_PASSPHRASE` (a long random passphrase, also stored offline), and `SUPABASE_DB_URL`; then add the Actions *variable* `BACKUPS_ENABLED=true`. See [OPERATIONS.md](OPERATIONS.md) for restore.
+
+## 6. Custom domain and Google Search Console
+
+1. Check availability and renewal price at a registrar (e.g. Cloudflare Registrar, Namecheap). Buying and DNS changes are owner decisions.
+2. Vercel → Project → **Domains**: add `lahza.com` and `www.lahza.com`, choose one as primary and redirect the other.
+3. Create the DNS records Vercel shows at the registrar. HTTPS certificates are issued automatically.
+4. Update `PUBLIC_SITE_URL`, the Supabase Site URL and Redirect URLs to the new origin; redeploy.
+5. Search Console → **Add property → Domain** → add the TXT record at the registrar → Verify → **Sitemaps** → submit `https://<domain>/sitemap.xml`.
+
+Indexing and ranking are controlled by Google and take time.
+
+## Release and rollback
+
+- Work on a branch; Vercel builds a preview per push. Merge to `main` to release.
+- Roll back from Vercel → Deployments → previous deployment → **Promote to Production**.
+- Database migrations are forward-only; take a backup before running the migration workflow.

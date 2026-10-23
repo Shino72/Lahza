@@ -1,31 +1,26 @@
 ---
-import type { GetStaticPaths } from 'astro';
 import Pagination from '../../../../components/Pagination.astro';
 import StoryCard from '../../../../components/StoryCard.astro';
-import { paginate } from '../../../../content/query';
-import type { Category, Lang } from '../../../../content/types';
 import { t } from '../../../../i18n/strings';
-import { languages, otherLang, paths } from '../../../../i18n/routes';
+import { isLang, otherLang, paths } from '../../../../i18n/routes';
 import BaseLayout from '../../../../layouts/BaseLayout.astro';
-import { CATEGORY_PAGE_SIZE, publicSiteData } from '../../../../lib/site-data';
+import { getRepository } from '../../../../lib/server/content';
 
+const PER_PAGE = 12;
+const { lang, slug } = Astro.params;
+const pageParam = Astro.params.page;
+if (!isLang(lang)) return new Response(null, { status: 404 });
 
-export const getStaticPaths = (() =>
-  languages.flatMap((lang) => {
-    const { categories, inCategory } = publicSiteData(lang);
-    return categories.flatMap((category) => {
-      const { totalPages } = paginate(inCategory(category.id), 1, CATEGORY_PAGE_SIZE);
-      return Array.from({ length: totalPages }, (_, i) => ({
-        params: { lang, slug: category.slug, page: i === 0 ? undefined : `page/${i + 1}` },
-        props: { category, page: i + 1 },
-      }));
-    });
-  })) satisfies GetStaticPaths;
+const pageMatch = pageParam === undefined ? ['', '1'] : /^page\/([2-9]|[1-9][0-9]{1,3})$/.exec(pageParam);
+if (!pageMatch) return new Response(null, { status: 404 });
+const page = Number(pageMatch[1]);
 
-const lang = Astro.params.lang as Lang;
-const { category, page } = Astro.props as { category: Category; page: number };
-const { inCategory } = publicSiteData(lang);
-const result = paginate(inCategory(category.id), page, CATEGORY_PAGE_SIZE);
+const repo = getRepository();
+const category = (await repo.categories()).find((c) => c.slug === slug);
+if (!category) return new Response(null, { status: 404 });
+
+const result = await repo.latest(lang, { page, perPage: PER_PAGE, categoryId: category.id });
+if (page > result.totalPages) return new Response(null, { status: 404 });
 const title = category.name[lang];
 ---
 <BaseLayout
@@ -41,10 +36,10 @@ const title = category.name[lang];
     <p class="empty">{t(lang, 'category.empty')}</p>
   ) : (
     <div class="section">
-      <StoryCard article={result.items[0]!} variant="lead" headingLevel={2} eager={page === 1} />
+      <StoryCard article={result.items[0]!} category={category} variant="lead" headingLevel={2} eager={page === 1} />
       {result.items.length > 1 && (
         <div class="panel list-grid section">
-          {result.items.slice(1).map((article) => <StoryCard article={article} variant="row" headingLevel={2} />)}
+          {result.items.slice(1).map((article) => <StoryCard article={article} category={category} variant="row" headingLevel={2} />)}
         </div>
       )}
     </div>

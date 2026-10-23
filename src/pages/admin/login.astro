@@ -1,0 +1,83 @@
+---
+import { at } from '../../admin/strings';
+import AuthLayout from '../../layouts/AuthLayout.astro';
+import { loadAccess } from '../../lib/server/access';
+import { adminLang, field, safeNext } from '../../lib/server/admin';
+import { logAuthEvent } from '../../lib/server/auth-log';
+import { serverEnv } from '../../lib/server/env';
+import { allow, clientKey } from '../../lib/server/rate-limit';
+
+const lang = adminLang(Astro.cookies);
+const supabase = Astro.locals.supabase!;
+const next = safeNext(Astro.url.searchParams.get('next'));
+let message: string | null = null;
+let notice: string | null = null;
+let email = '';
+
+const status = Astro.url.searchParams.get('error');
+if (status === 'access') message = at(lang, 'login.noAccess');
+if (status === 'link') message = at(lang, 'login.link');
+if (Astro.url.searchParams.get('signed_out')) notice = at(lang, 'login.signedOut');
+if (Astro.url.searchParams.get('password')) notice = at(lang, 'login.passwordUpdated');
+
+if (Astro.request.method === 'GET' && Astro.locals.user) {
+  return Astro.redirect(next, 303);
+}
+
+if (Astro.request.method === 'POST') {
+  const form = await Astro.request.formData();
+  email = field(form, 'email', 254).toLowerCase();
+  const password = String(form.get('password') ?? '').slice(0, 200);
+  const ip = clientKey(Astro.clientAddress);
+  const allowed =
+    (await allow('login-ip', ip, 30, 900)) && (await allow('login-email', clientKey(email), 8, 900));
+  if (!allowed) {
+    message = at(lang, 'login.limited');
+    Astro.response.status = 429;
+  } else {
+    const { data, error } = await supabase.auth.signInWithPassword({ email, password });
+    const access = !error && data.user ? await loadAccess(supabase) : null;
+    if (error || !data.user) {
+      await logAuthEvent(null, 'auth.login_failed', { emailKey: clientKey(email) });
+      message = at(lang, 'login.failed');
+      Astro.response.status = 401;
+    } else if (!access || access.status === 'suspended') {
+      await supabase.auth.signOut();
+      await logAuthEvent(data.user.id, 'auth.login_denied', {});
+      message = at(lang, 'login.noAccess');
+      Astro.response.status = 403;
+    } else {
+      await logAuthEvent(data.user.id, 'auth.login', {});
+      if (access.status === 'invited') return Astro.redirect('/admin/set-password/?flow=invite', 303);
+      if (access.mfaRequired) {
+        const { data: factors } = await supabase.auth.mfa.listFactors();
+        const verified = (factors?.totp ?? []).some((f) => f.status === 'verified');
+        return Astro.redirect(verified ? `/admin/mfa/verify/?next=${encodeURIComponent(next)}` : '/admin/mfa/setup/', 303);
+      }
+      return Astro.redirect(next, 303);
+    }
+  }
+}
+---
+<AuthLayout title={at(lang, 'login.title')}>
+  <h1>{at(lang, 'login.title')}</h1>
+  {notice && <p class="flash flash--ok" role="status">{notice}</p>}
+  {message && <p class="flash flash--error" role="alert">{message}</p>}
+  <form class="admin-form" method="post">
+    <div class="field">
+      <label for="email">{at(lang, 'login.email')}</label>
+      <input id="email" name="email" type="email" autocomplete="username" required maxlength="254" dir="ltr" value={email} />
+    </div>
+    <div class="field">
+      <label for="password">{at(lang, 'login.password')}</label>
+      <input id="password" name="password" type="password" autocomplete="current-password" required maxlength="200" dir="ltr" />
+    </div>
+    <button class="btn btn--primary" type="submit">{at(lang, 'login.submit')}</button>
+  </form>
+  {serverEnv.googleLoginEnabled && (
+    <form method="post" action="/admin/auth/google/">
+      <button class="btn" type="submit">{at(lang, 'login.google')}</button>
+    </form>
+  )}
+  <p><a href="/admin/forgot-password/">{at(lang, 'login.forgot')}</a></p>
+</AuthLayout>

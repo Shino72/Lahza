@@ -1,0 +1,68 @@
+---
+import { at, type AdminKey } from '../../admin/strings';
+import AdminLayout from '../../layouts/AdminLayout.astro';
+import { can } from '../../lib/server/access';
+import { adminLang } from '../../lib/server/admin';
+import { formatDateTime } from '../../lib/format';
+
+const lang = adminLang(Astro.cookies);
+const a = (key: AdminKey) => at(lang, key);
+const db = Astro.locals.supabase!;
+const access = Astro.locals.access!;
+const now = new Date().toISOString();
+
+const count = async (build: (q: ReturnType<typeof base>) => ReturnType<typeof base>) => {
+  const { count: n } = await build(base());
+  return n ?? 0;
+};
+const base = () => db.from('articles').select('id', { count: 'exact', head: true });
+
+const [drafts, review, scheduled, published, inquiries, recent] = await Promise.all([
+  count((q) => q.eq('status', 'draft').eq('author_id', access.userId)),
+  count((q) => q.eq('status', 'in_review')),
+  count((q) => q.eq('status', 'published').gt('publish_at', now)),
+  count((q) => q.eq('status', 'published').lte('publish_at', now)),
+  can(access, 'inquiry.read')
+    ? db.from('ad_inquiries').select('id', { count: 'exact', head: true }).eq('status', 'new').then((r) => r.count ?? 0)
+    : Promise.resolve(null),
+  db.from('articles').select('id, title, status, updated_at').order('updated_at', { ascending: false }).limit(6),
+]);
+
+const stats: { key: AdminKey; value: number; href: string }[] = [
+  { key: 'dash.drafts', value: drafts, href: '/admin/articles/?status=draft' },
+  { key: 'dash.review', value: review, href: '/admin/articles/?status=in_review' },
+  { key: 'dash.scheduled', value: scheduled, href: '/admin/articles/?status=published' },
+  { key: 'dash.published', value: published, href: '/admin/articles/?status=published' },
+];
+---
+<AdminLayout title={a('dash.title')}>
+  <h1>{a('dash.title')}</h1>
+  <div class="admin-stats">
+    {stats.map((s) => (
+      <a class="admin-stat" href={s.href}><span class="hint">{a(s.key)}</span><strong>{s.value}</strong></a>
+    ))}
+  </div>
+  {inquiries !== null && (
+    <a class="admin-stat" href="/admin/inquiries/"><span class="hint">{a('dash.inquiries')}</span><strong>{inquiries}</strong></a>
+  )}
+  <section class="admin-card">
+    <div class="admin-actions">
+      <h2>{a('dash.recent')}</h2>
+      <span class="admin-bar__spacer"></span>
+      {can(access, 'article.create') && <a class="btn btn--primary" href="/admin/articles/new/">{a('nav.newArticle')}</a>}
+    </div>
+    <div class="admin-table-wrap">
+      <table class="admin-table">
+        <tbody>
+          {(recent.data ?? []).map((r) => (
+            <tr>
+              <td><a href={`/admin/articles/${r.id}/`} dir="auto">{r.title}</a></td>
+              <td><span class:list={['pill', `pill--${r.status}`]}>{a(`status.${r.status}` as AdminKey)}</span></td>
+              <td class="hint">{formatDateTime(r.updated_at, lang)}</td>
+            </tr>
+          ))}
+        </tbody>
+      </table>
+    </div>
+  </section>
+</AdminLayout>
