@@ -21,15 +21,17 @@ export default defineConfig({
     checkOrigin: true,
   },
   env: {
+    // Values are checked in src/lib/server/env.ts so a malformed setting is ignored and logged
+    // instead of failing every request.
     schema: {
-      SUPABASE_URL: envField.string({ context: 'server', access: 'secret', optional: true, url: true }),
+      SUPABASE_URL: envField.string({ context: 'server', access: 'secret', optional: true }),
       SUPABASE_PUBLISHABLE_KEY: envField.string({ context: 'server', access: 'secret', optional: true }),
       SUPABASE_SECRET_KEY: envField.string({ context: 'server', access: 'secret', optional: true }),
       OWNER_SETUP_TOKEN: envField.string({ context: 'server', access: 'secret', optional: true }),
       TURNSTILE_SITE_KEY: envField.string({ context: 'server', access: 'secret', optional: true }),
       TURNSTILE_SECRET_KEY: envField.string({ context: 'server', access: 'secret', optional: true }),
-      GOOGLE_LOGIN_ENABLED: envField.boolean({ context: 'server', access: 'secret', default: false }),
-      LAHZA_CONTENT_SOURCE: envField.enum({ context: 'server', access: 'secret', values: ['auto', 'demo', 'supabase'], default: 'auto' }),
+      GOOGLE_LOGIN_ENABLED: envField.string({ context: 'server', access: 'secret', optional: true }),
+      LAHZA_CONTENT_SOURCE: envField.string({ context: 'server', access: 'secret', optional: true }),
     },
   },
   vite: {

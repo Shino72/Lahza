@@ -8,17 +8,21 @@ import {
   TURNSTILE_SECRET_KEY,
   TURNSTILE_SITE_KEY,
 } from 'astro:env/server';
+import { parseServerEnv } from './env-parse';
 
-export const serverEnv = {
-  supabaseUrl: SUPABASE_URL,
-  supabasePublishableKey: SUPABASE_PUBLISHABLE_KEY,
-  supabaseSecretKey: SUPABASE_SECRET_KEY,
-  ownerSetupToken: OWNER_SETUP_TOKEN,
-  turnstileSiteKey: TURNSTILE_SITE_KEY,
-  turnstileSecretKey: TURNSTILE_SECRET_KEY,
-  googleLoginEnabled: GOOGLE_LOGIN_ENABLED,
-  contentSource: LAHZA_CONTENT_SOURCE,
-};
+export const serverEnv = parseServerEnv(
+  {
+    SUPABASE_URL,
+    SUPABASE_PUBLISHABLE_KEY,
+    SUPABASE_SECRET_KEY,
+    OWNER_SETUP_TOKEN,
+    TURNSTILE_SITE_KEY,
+    TURNSTILE_SECRET_KEY,
+    GOOGLE_LOGIN_ENABLED,
+    LAHZA_CONTENT_SOURCE,
+  },
+  (message) => console.error(`configuration: ${message}`),
+);
 
 /** True when the database, auth and storage are configured. */
 export const backendConfigured = () =>
