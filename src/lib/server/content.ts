@@ -1,12 +1,18 @@
-import { demoRepository, type PublicRepository } from '../../content/repository';
+import { demoRepository, emptyRepository, type PublicRepository } from '../../content/repository';
 import { backendConfigured, serverEnv } from './env';
 import { getPublicClient } from './supabase';
 import { supabaseRepository } from './supabase-repository';
 
-/** Database content when Supabase is configured; labelled sample content otherwise. */
+/**
+ * Database content when Supabase is configured. Sample content is used only
+ * outside production (or when explicitly requested), so a misconfigured
+ * production deployment shows an empty site rather than sample stories.
+ */
 export function getRepository(): PublicRepository {
-  const useSupabase =
-    serverEnv.contentSource === 'supabase' || (serverEnv.contentSource === 'auto' && backendConfigured());
-  if (useSupabase) return supabaseRepository(getPublicClient(), serverEnv.supabaseUrl!);
-  return demoRepository();
+  const source = serverEnv.contentSource;
+  if (source === 'supabase' || (source === 'auto' && backendConfigured())) {
+    return supabaseRepository(getPublicClient(), serverEnv.supabaseUrl!);
+  }
+  if (source === 'demo' || process.env.VERCEL_ENV !== 'production') return demoRepository();
+  return emptyRepository();
 }

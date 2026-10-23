@@ -11,6 +11,13 @@ export interface Alternate {
   href: string;
 }
 
+/** Meta description: the SEO description, else the summary, else the opening paragraph. */
+export function articleDescription(article: Article): string {
+  const first = article.body.find((b) => b.type === 'paragraph');
+  const text = article.seoDescription || article.summary || (first && 'text' in first ? first.text : '') || article.title;
+  return text.length > 160 ? `${text.slice(0, 157).trimEnd()}…` : text;
+}
+
 /** NewsArticle structured data built only from stored article fields. */
 export function newsArticleJsonLd(args: {
   article: Article;
@@ -25,7 +32,7 @@ export function newsArticleJsonLd(args: {
     '@type': 'NewsArticle',
     mainEntityOfPage: url,
     headline: article.title.slice(0, 110),
-    description: article.seoDescription ?? article.summary,
+    description: articleDescription(article),
     inLanguage: article.lang,
     datePublished: article.publishAt,
     dateModified: article.updatedAt,

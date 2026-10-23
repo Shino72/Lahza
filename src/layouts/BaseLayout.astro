@@ -43,7 +43,7 @@ const siteName = siteNames[lang];
 const fullTitle = title === siteName ? `${siteName} | ${settings.tagline[lang]}` : `${title} | ${siteName}`;
 const ogImageUrl = ogImage ?? absoluteUrl(site, '/og-default.png');
 // Preview fixtures must never be indexed.
-const robots = isDemo || noindex ? 'noindex, nofollow' : 'index, follow, max-image-preview:large';
+const robots = repo.kind !== 'supabase' || noindex ? 'noindex, nofollow' : 'index, follow, max-image-preview:large';
 ---
 <!doctype html>
 <html lang={lang} dir={dir(lang)}>

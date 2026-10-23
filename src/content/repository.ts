@@ -25,7 +25,7 @@ export type TickerEntry = TickerItem & { article?: Article };
 
 /** Read access to public content. Implementations must return published content only. */
 export interface PublicRepository {
-  readonly kind: 'demo' | 'supabase';
+  readonly kind: 'demo' | 'supabase' | 'empty';
   settings(): Promise<SiteSettings>;
   categories(): Promise<Category[]>;
   latest(lang: Lang, options: { page?: number; perPage: number; categoryId?: string }): Promise<Page<Article>>;
@@ -65,5 +65,22 @@ export function demoRepository(now: () => Date = () => new Date()): PublicReposi
     isGone: async () => false,
     allPublished: async () =>
       demoArticles.filter((a) => isPubliclyVisible(a, now())).sort(byNewest),
+  };
+}
+
+/** No content: used when a production deployment has no database configured, so samples never go live. */
+export function emptyRepository(): PublicRepository {
+  return {
+    kind: 'empty',
+    settings: async () => defaultSettings,
+    categories: async () => visibleCategories(initialCategories),
+    latest: async (_lang, { page = 1 }) => ({ items: [], page, totalPages: 1 }),
+    article: async () => null,
+    translationOf: async () => null,
+    related: async () => [],
+    homepage: async () => ({ featured: [], ticker: [] }),
+    search: async () => [],
+    isGone: async () => false,
+    allPublished: async () => [],
   };
 }

@@ -4,7 +4,7 @@ import { demoArticles } from '../../src/content/demo/articles';
 import { initialCategories } from '../../src/content/categories';
 import { strings } from '../../src/i18n/strings';
 import { inquirySchema } from '../../src/lib/inquiry';
-import { jsonLdString, newsArticleJsonLd } from '../../src/lib/seo';
+import { articleDescription, jsonLdString, newsArticleJsonLd } from '../../src/lib/seo';
 import { shareLinks } from '../../src/lib/share';
 
 describe('contact details', () => {
@@ -85,6 +85,13 @@ describe('SEO helpers', () => {
     });
     // No image is claimed when the article has none.
     expect(data).not.toHaveProperty('image');
+  });
+
+  it('never leaves the description empty', () => {
+    const noSummary = { ...article, summary: '', seoDescription: undefined };
+    expect(articleDescription(noSummary)).toBe((article.body[0] as { text: string }).text);
+    expect(articleDescription({ ...noSummary, body: [] })).toBe(article.title);
+    expect(articleDescription({ ...noSummary, summary: 'x'.repeat(300) }).length).toBeLessThanOrEqual(160);
   });
 
   it('escapes markup when embedding JSON-LD', () => {

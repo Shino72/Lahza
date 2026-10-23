@@ -57,6 +57,7 @@ const current = (href: string) => (href === active ? 'page' : undefined);
     <link rel="icon" href="/favicon.svg" type="image/svg+xml" />
   </head>
   <body class="admin">
+    <a class="skip-link" href="#main">{lang === 'ar' ? 'تخطَّ إلى المحتوى' : 'Skip to content'}</a>
     <header class="admin-bar">
       <a class="admin-bar__brand" href="/admin/">{a('brand')}</a>
       <span class="admin-bar__spacer"></span>
@@ -91,6 +92,14 @@ const current = (href: string) => (href === active ? 'page' : undefined);
       const sync = () => { if (nav) nav.open = wide.matches; };
       sync();
       wide.addEventListener('change', sync);
+
+      // Prevent double submissions (for example publishing twice on a slow connection).
+      document.addEventListener('submit', (event) => {
+        const form = event.target as HTMLFormElement;
+        if (form.method.toLowerCase() !== 'post') return;
+        form.setAttribute('aria-busy', 'true');
+        setTimeout(() => form.querySelectorAll('button').forEach((b) => (b.disabled = true)), 0);
+      });
     </script>
   </body>
 </html>

@@ -17,6 +17,7 @@ const statuses = ['new', 'in_progress', 'closed', 'spam'] as const;
 if (Astro.request.method === 'POST') {
   const form = await Astro.request.formData();
   if (field(form, 'intent', 10) === 'delete') {
+    if (form.get('confirm_delete') !== 'on') return Astro.redirect(withFlash(`/admin/inquiries/${id}/`, 'error', 'confirmDelete'), 303);
     const { data, error } = await db.from('ad_inquiries').delete().eq('id', id).select('id');
     if (error || !data?.length) return Astro.redirect(withFlash(`/admin/inquiries/${id}/`, 'error', error ? errorKey(error) : 'forbidden'), 303);
     return Astro.redirect(withFlash('/admin/inquiries/', 'ok', 'deleted'), 303);
@@ -58,6 +59,7 @@ const canManage = can(access, 'inquiry.manage');
       </div>
       <div class="admin-actions">
         <button class="btn btn--primary" type="submit">{a('action.save')}</button>
+        <label class="check"><input type="checkbox" name="confirm_delete" />{a('inquiries.confirmDelete')}</label>
         <button class="btn btn--danger" type="submit" name="intent" value="delete">{a('action.delete')}</button>
       </div>
     </form>

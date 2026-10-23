@@ -282,7 +282,7 @@ const editorStrings = {
     </aside>
   </form>
 
-  {article && can(access, 'article.delete') && (
+  {article && can(access, 'article.delete') && (status === 'draft' || status === 'archived') && (
     <form class="admin-card admin-form" method="post">
       <input type="hidden" name="intent" value="delete" />
       <div class="field">

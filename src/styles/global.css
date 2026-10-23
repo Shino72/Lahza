@@ -1211,3 +1211,13 @@ fieldset[disabled] .button {
 .field--invalid textarea {
   border-color: #d92d20;
 }
+
+.hint-line {
+  color: var(--muted);
+  font-size: 0.9rem;
+}
+
+.hint-line a {
+  color: var(--brand);
+  font-weight: 700;
+}

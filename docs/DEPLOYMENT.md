@@ -1,6 +1,20 @@
 # Deployment and setup
 
-Everything below is done in provider dashboards. Secrets go into those dashboards only — never into the repository, chat, or email.
+Everything below is done in provider dashboards, and works from a phone browser. Secrets go into those dashboards only — never into the repository, chat, or email.
+
+## First deployment checklist
+
+1. ☐ **GitHub:** the code is on a branch of `Shino72/Lahza` (push, or upload the source ZIP).
+2. ☐ **Supabase:** create the project; save the database password in a password manager (§1).
+3. ☐ **GitHub secret** `SUPABASE_DB_URL` → Actions → **Database migrations** → Run workflow → green tick (§1.2).
+4. ☐ **Supabase Auth:** sign-ups off, TOTP on, Site URL + Redirect URLs, email templates, SMTP (§1.3–1.7).
+5. ☐ **Vercel variables:** `SUPABASE_URL`, `SUPABASE_PUBLISHABLE_KEY`, `SUPABASE_SECRET_KEY`, `PUBLIC_SITE_URL`, `OWNER_SETUP_TOKEN` → Redeploy (§2).
+6. ☐ **Check the preview:** home page shows "no stories yet" (not sample stories), `/robots.txt` lists the sitemap.
+7. ☐ **Owner:** `/admin/setup/` → invitation email → password → authenticator app (§3).
+8. ☐ **First login:** sign out, sign in at `/admin/login/` with password + 6-digit code; publish a test article, open it on the site, then archive it.
+9. ☐ **Remove** `OWNER_SETUP_TOKEN` from Vercel → Redeploy.
+10. ☐ **Backups:** add the backup secrets and `BACKUPS_ENABLED=true`, run **Backup** once manually, confirm an artifact appears (§5).
+11. ☐ **Production:** merge to `main` only after steps 6–8 pass on the preview.
 
 ## 1. Supabase project
 
@@ -33,7 +47,7 @@ Project → **Settings → Environment Variables** (Production and Preview):
 | `TURNSTILE_SITE_KEY`, `TURNSTILE_SECRET_KEY` | Optional, from Cloudflare Turnstile |
 | `GOOGLE_LOGIN_ENABLED` | `true` only after step 4 |
 
-Redeploy after changing variables. With `SUPABASE_*` set, the site serves database content; without them it serves labelled sample content and is `noindex`.
+Redeploy after changing variables. With `SUPABASE_*` set, the site serves database content and is indexable. Without them, preview deployments show labelled sample stories and production shows an empty site; both are `noindex`, so sample content can never be published as news.
 
 Vercel's Hobby plan is for non-commercial use. Move to a plan that permits commercial use before the site carries advertising.
 

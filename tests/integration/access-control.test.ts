@@ -240,6 +240,30 @@ describe.skipIf(!hasSupabase)('database access control', () => {
     });
   });
 
+  describe('data safety', () => {
+    it('published articles cannot be deleted, even by an Owner, until archived', async () => {
+      const owner = await createStaff('manager', { mfa: true });
+      const id = await insertArticle({ slug: uniqueSlug('keep'), status: 'published', publish_at: new Date(Date.now() - 1000).toISOString() });
+      await owner.client.from('articles').delete().eq('id', id);
+      expect((await adminClient().from('articles').select('id').eq('id', id)).data).toHaveLength(1);
+      await owner.client.from('articles').update({ status: 'archived' }).eq('id', id);
+      const del = await owner.client.from('articles').delete().eq('id', id).select('id');
+      expect(del.data).toHaveLength(1);
+    });
+
+    it('images used by an article cannot be deleted', async () => {
+      const admin = adminClient();
+      const { data: media } = await admin
+        .from('media_assets')
+        .insert({ path: `${journalist.id}/${uniqueSlug('m')}.webp`, mime_type: 'image/webp', width: 10, height: 10, size_bytes: 10, uploaded_by: journalist.id })
+        .select('id')
+        .single();
+      await insertArticle({ slug: uniqueSlug('uses'), body: [{ type: 'image', mediaId: media!.id }] });
+      const del = await admin.from('media_assets').delete().eq('id', media!.id);
+      expect(del.error?.code).toBe('23503');
+    });
+  });
+
   describe('removed articles', () => {
     it('answers gone for archived articles that were public', async () => {
       await adminClient().from('articles').update({ status: 'archived' }).eq('id', publishedId);

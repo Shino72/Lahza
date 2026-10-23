@@ -100,6 +100,8 @@ test.describe('newsroom workflow', () => {
       const res = await page.goto(path);
       expect(res?.status(), path).toBe(200);
       await expect(page.locator('h1')).toBeVisible();
+      // Usable on a phone: no sideways scrolling.
+      expect(await page.evaluate(() => document.documentElement.scrollWidth - window.innerWidth), path).toBeLessThanOrEqual(0);
     }
   });
 
@@ -278,6 +280,99 @@ test.describe('newsroom workflow', () => {
     expect(home).toContain(`عاجل ${run}`);
     const lead = /<article class="story-lead">[\s\S]*?<\/article>/.exec(home)?.[0] ?? '';
     expect(lead).toContain(`خبر ثنائي اللغة ${run}`);
+  });
+
+  test('Owner management actions work end to end', async ({ browser, request }) => {
+    test.setTimeout(90_000);
+    // Site settings reach the public footer.
+    await page.goto('/admin/settings/');
+    await page.locator('#taglineEn').fill(`Tagline check ${run}`);
+    await page.getByRole('button', { name: 'حفظ', exact: true }).click();
+    await expect(await flash(page)).toHaveClass(/flash--ok/);
+    expect(await (await request.get('/en/')).text()).toContain(`Tagline check ${run}`);
+
+    // Hiding a category removes it from navigation without touching articles.
+    const drama = page.locator('form:has(input[name="slug"][value="drama"])');
+    await page.goto('/admin/categories/');
+    await drama.locator('input[name="visible"]').uncheck();
+    await drama.getByRole('button', { name: 'حفظ', exact: true }).click();
+    await expect(await flash(page)).toHaveClass(/flash--ok/);
+    expect(await (await request.get('/ar/')).text()).not.toContain('href="/ar/category/drama/"');
+    expect((await request.get('/ar/category/drama/')).status()).toBe(404);
+    await drama.locator('input[name="visible"]').check();
+    await drama.getByRole('button', { name: 'حفظ', exact: true }).click();
+    await expect(await flash(page)).toHaveClass(/flash--ok/);
+
+    // Archive answers 410, restore returns a draft, revisions can be restored, deletion needs confirmation.
+    await page.goto('/admin/articles/?q=' + encodeURIComponent(`خبر ثنائي اللغة ${run}`));
+    await page.locator('.admin-table a').first().click();
+    await page.getByRole('button', { name: 'أرشفة' }).click();
+    await expect(await flash(page)).toHaveClass(/flash--ok/);
+    expect((await request.get(`/ar/news/bilingual-${run}/`)).status()).toBe(410);
+    await page.getByRole('button', { name: 'استعادة كمسودة' }).click();
+    await expect(await flash(page)).toHaveClass(/flash--ok/);
+    await page.locator('#title').fill('عنوان مؤقت');
+    await page.getByRole('button', { name: 'حفظ', exact: true }).click();
+    await page.locator('details:has(.admin-table) summary').click();
+    await page.locator('tr', { hasText: `خبر ثنائي اللغة ${run}` }).first().getByRole('button').click();
+    await expect(await flash(page)).toHaveClass(/flash--ok/);
+    await expect(page.locator('#title')).toHaveValue(`خبر ثنائي اللغة ${run}`);
+    await page.locator('#confirm-delete').fill('delete');
+    await page.getByRole('button', { name: 'حذف نهائي' }).click();
+    await expect(await flash(page)).toHaveClass(/flash--error/);
+    await page.locator('#confirm-delete').fill('DELETE');
+    await page.getByRole('button', { name: 'حذف نهائي' }).click();
+    await expect(page).toHaveURL(/\/admin\/articles\/\?ok=deleted/);
+
+    // Images: upload, describe, delete; an image used by an article cannot be deleted.
+    await page.goto('/admin/media/');
+    await page.locator('#file').setInputFiles({ name: 'extra.png', mimeType: 'image/png', buffer: await testImage() });
+    await page.locator('#alt_ar').fill(`وصف ${run}`);
+    await page.getByRole('button', { name: 'رفع' }).click();
+    await expect(await flash(page)).toHaveClass(/flash--ok/);
+    const tiles = page.locator('details.media-tile');
+    await tiles.first().locator('summary').click();
+    await tiles.first().locator('input[name="alt_en"]').fill(`Description ${run}`);
+    await tiles.first().getByRole('button', { name: 'حفظ' }).click();
+    await expect(await flash(page)).toHaveClass(/flash--ok/);
+    await tiles.first().locator('summary').click();
+    await tiles.first().getByRole('button', { name: 'حذف' }).click();
+    await expect(await flash(page)).toHaveClass(/flash--ok/);
+    await tiles.last().locator('summary').click();
+    await tiles.last().getByRole('button', { name: 'حذف' }).click();
+    await expect(await flash(page)).toHaveClass(/flash--error/);
+
+    // Inquiries: status update; deletion requires explicit confirmation.
+    await page.goto('/admin/inquiries/');
+    await page.locator('.admin-table a').first().click();
+    await page.locator('#status').selectOption('in_progress');
+    await page.getByRole('button', { name: 'حفظ', exact: true }).click();
+    await expect(await flash(page)).toHaveClass(/flash--ok/);
+    await page.getByRole('button', { name: 'حذف نهائي' }).click();
+    await expect(await flash(page)).toHaveClass(/flash--error/);
+    await page.locator('input[name="confirm_delete"]').check();
+    await page.getByRole('button', { name: 'حذف نهائي' }).click();
+    await expect(page).toHaveURL(/\/admin\/inquiries\/\?ok=deleted/);
+
+    // Staff: suspension blocks sign-in immediately; reactivation restores it.
+    await page.goto('/admin/staff/');
+    await page.getByRole('link', { name: writer.name }).click();
+    await page.getByRole('button', { name: 'إيقاف الحساب' }).click();
+    await expect(await flash(page)).toHaveClass(/flash--ok/);
+    const ctx = await browser.newContext({ baseURL: 'http://localhost:4321' });
+    const w = await ctx.newPage();
+    await w.goto('/admin/login/');
+    await w.locator('#email').fill(writer.email);
+    await w.locator('#password').fill(writer.password);
+    await w.locator('form.admin-form button[type="submit"]').click();
+    await expect(w.locator('.flash--error')).toBeVisible();
+    await page.getByRole('button', { name: 'إعادة تفعيل' }).click();
+    await expect(await flash(page)).toHaveClass(/flash--ok/);
+    await w.locator('#email').fill(writer.email);
+    await w.locator('#password').fill(writer.password);
+    await w.locator('form.admin-form button[type="submit"]').click();
+    await expect(w).toHaveURL(/\/admin\/$/);
+    await ctx.close();
   });
 
   test('every change is in the audit log', async () => {

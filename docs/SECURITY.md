@@ -26,8 +26,9 @@
 
 ## Tested
 
-- `npm run test:integration` — database access with anonymous, journalist, editor (with and without MFA), manager and suspended accounts.
-- `npm run test:e2e` — full newsroom workflow, forged publish attempt, inquiry storage, setup token rejection.
+- `npm run test:integration` — database access with anonymous, journalist, editor (with and without MFA), manager and suspended accounts; deletion safeguards.
+- `npm test` — upload validation (disguised HTML/SVG, oversized files and dimensions, metadata stripping), helpers.
+- `npm run test:e2e` — full newsroom workflow, every Owner management action, forged publish attempt, suspension, inquiry storage, setup token rejection.
 
 ## Known limitations
 
@@ -35,6 +36,7 @@
 - Images used by scheduled articles become public when the article is scheduled, before its publish time (random, unguessable URLs).
 - Supabase Free projects pause after a week of inactivity and include no automatic backups; see `OPERATIONS.md`.
 - Google sign-in is implemented but not covered by automated tests.
+- Public pages are cached by the CDN for up to about two minutes, so an unpublished article can remain visible for that long.
 - No system is unbreakable; report suspected issues privately to the Owner.
 
 ## Reporting

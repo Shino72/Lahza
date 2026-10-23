@@ -35,8 +35,8 @@ export const onRequest = defineMiddleware(async (context, next) => {
   } else {
     const readOnly = context.request.method === 'GET' || context.request.method === 'HEAD';
     if (readOnly && response.status === 200 && !response.headers.has('Cache-Control')) {
-      // Short CDN cache so dashboard changes reach readers within about a minute.
-      response.headers.set('Cache-Control', 'public, max-age=0, s-maxage=60, stale-while-revalidate=300');
+      // Short CDN cache: dashboard changes, including unpublishing, reach readers within about two minutes.
+      response.headers.set('Cache-Control', 'public, max-age=0, s-maxage=60, stale-while-revalidate=60');
     } else if (!readOnly) {
       response.headers.set('Cache-Control', 'no-store');
     }

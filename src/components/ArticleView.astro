@@ -67,6 +67,9 @@ const coverKey = category?.slug ?? article.categoryId;
       </ul>
     )}
     {!preview && <ShareLinks lang={lang} url={url} title={article.title} />}
+    {!preview && !translation && (
+      <p class="hint-line">{t(lang, 'article.noTranslation')} <a href={paths.home(lang === 'ar' ? 'en' : 'ar')} hreflang={lang === 'ar' ? 'en' : 'ar'} lang={lang === 'ar' ? 'en' : 'ar'}>{t(lang, 'article.otherEdition')}</a></p>
+    )}
     {translation && (
       <a class="translation-link" href={paths.article(translation)} hreflang={translation.lang} lang={translation.lang}><Icon name="globe" />{t(lang, 'article.readIn')}</a>
     )}

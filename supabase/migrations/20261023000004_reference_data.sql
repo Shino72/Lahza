@@ -1,4 +1,5 @@
 -- Permission catalogue, role defaults, initial categories and site settings.
+-- Safe to re-run: existing rows (including values edited in the dashboard) are kept.
 
 insert into public.permissions (key, description) values
   ('article.create', 'Create article drafts'),
@@ -17,7 +18,8 @@ insert into public.permissions (key, description) values
   ('staff.read', 'View staff accounts'),
   ('staff.invite', 'Invite staff and revoke invitations'),
   ('staff.manage', 'Change roles, permissions and account status'),
-  ('audit.read', 'View the audit log');
+  ('audit.read', 'View the audit log')
+on conflict (key) do nothing;
 
 insert into public.role_permissions (role, permission)
 select 'manager'::public.app_role, p from unnest(array[
@@ -33,7 +35,8 @@ select 'editor'::public.app_role, p from unnest(array[
 union all
 select 'journalist'::public.app_role, p from unnest(array[
   'article.create', 'article.edit_own', 'article.submit', 'media.upload'
-]) p;
+]) p
+on conflict do nothing;
 
 insert into public.categories (slug, name_ar, name_en, description_ar, description_en, sort_order) values
   ('egypt', 'مصر', 'Egypt', 'أخبار المحافظات والخدمات والشأن المحلي في مصر.', 'Local news, services and public affairs across Egypt.', 1),
@@ -45,7 +48,8 @@ insert into public.categories (slug, name_ar, name_en, description_ar, descripti
   ('drama', 'دراما', 'Drama', 'المسلسلات والأعمال الدرامية وكواليسها.', 'TV series and drama productions.', 7),
   ('crime', 'حوادث', 'Crime & Incidents', 'الحوادث والقضايا وأخبار المحاكم.', 'Incidents, cases and court news.', 8),
   ('technology', 'تكنولوجيا', 'Technology', 'التقنية والاتصالات والذكاء الاصطناعي.', 'Technology, telecoms and AI.', 9),
-  ('lifestyle', 'لايف ستايل', 'Lifestyle', 'الصحة والأسرة والسفر والحياة اليومية.', 'Health, family, travel and daily life.', 10);
+  ('lifestyle', 'لايف ستايل', 'Lifestyle', 'الصحة والأسرة والسفر والحياة اليومية.', 'Health, family, travel and daily life.', 10)
+on conflict (slug) do nothing;
 
 insert into public.site_settings (key, value) values
   ('contact', jsonb_build_object(
@@ -65,4 +69,5 @@ insert into public.site_settings (key, value) values
   ('tagline', jsonb_build_object(
     'ar', 'أخبار مصر والعالم لحظة بلحظة',
     'en', 'News from Egypt and the world, moment by moment'
-  ));
+  ))
+on conflict (key) do nothing;
